@@ -1,0 +1,24 @@
+{:paths ["src" "resources"]
+ :deps  {org.clojure/clojure       {:mvn/version "1.11.1"}
+         org.clojure/tools.logging {:mvn/version "1.2.4"}
+         org.clojure/core.async    {:mvn/version "1.5.648"}
+
+         markdown-clj/markdown-clj             {:mvn/version "1.10.7"}
+         ;;YAML found in markdown front matter
+         clj-commons/clj-yaml                  {:mvn/version "0.7.109"}
+         hiccup/hiccup                         {:mvn/version "2.0.0-alpha2"}
+         commonmark-hiccup/commonmark-hiccup   {:mvn/version "0.1.0"}
+         markdown-to-hiccup/markdown-to-hiccup {:mvn/version "0.6.2"}
+
+         io.github.nextjournal/markdown {:git/url "https://github.com/defsquare/markdown" :sha "56e267175c621a9f9c35a633c8d786ccf4fa61e3"}
+
+         instaparse/instaparse {:mvn/version "1.4.10"}
+
+         hickory/hickory                     {:mvn/version "0.7.1"}
+         camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.2"}
+
+         environ/environ                     {:mvn/version "1.2.0"}
+         }
+ :aliases {:dev       {:extra-deps        {  hawk/hawk {:mvn/version "0.2.11"}}}
+           :run-m     {:main-opts ["-m" "defsquare.main"]}
+           }}
