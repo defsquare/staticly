@@ -137,7 +137,7 @@
   (println (format "Render file %s" file))
   (let [template (determine-template params file)]
     (println (format "DEBUG Render file %s %s %s" file template params))
-    (println (type template))
+    ;(println (type template))
     (-> file
         slurp
         md/process
@@ -241,11 +241,11 @@ end tell ")))
 
 (defmacro emit-export [to]
   `(defn ~(symbol EXPORT_FN_NAME)
-         ([html#]
-          (~(symbol EXPORT_FN_NAME) html# ~to))
-         ([html# filename#]
+         ([hiccup#]
+          (~(symbol EXPORT_FN_NAME) hiccup# ~to))
+     ([hiccup# filename#]
           (println "Export html to" filename#)
-          (spit filename# html#))))
+          (spit filename# (hiccup/html hiccup#)))))
 
 (defmacro emit-build [reload-word render-fn]
   `(defn ~(symbol BUILD_FN_NAME) []
@@ -267,7 +267,7 @@ end tell ")))
   {:project-name (ns-first-name *ns*)
    :doc-name     (ns-last-name *ns*)})
 
-(defmacro defbuilder
+(defmacro def-render-builder
   ([]
    (let [{:keys [project-name doc-name]} (execution-context)
          export-dir                      PUBLIC_DIR
