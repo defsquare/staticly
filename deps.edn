@@ -10,7 +10,9 @@
          commonmark-hiccup/commonmark-hiccup   {:mvn/version "0.1.0"}
          markdown-to-hiccup/markdown-to-hiccup {:mvn/version "0.6.2"}
 
-         io.github.nextjournal/markdown {:git/url "https://github.com/defsquare/markdown" :sha "56e267175c621a9f9c35a633c8d786ccf4fa61e3"}
+         ;;our fork to be able to inline HTML
+         io.github.nextjournal/markdown {:git/url "https://github.com/defsquare/markdown"
+                                         :sha "56e267175c621a9f9c35a633c8d786ccf4fa61e3"}
 
          instaparse/instaparse {:mvn/version "1.4.10"}
 

@@ -74,6 +74,7 @@
 (def copied-filetypes #{"jpg" "png" "svg" "css"})
 
 (defn- dest-path [{:as params :keys [from to dest-path-fn]} path]
+  (println "dest-path" params path)
   (let [out-path-fn (or dest-path-fn drop-extension)
         single-file? (= path from)
         to-dir? (or (.isDirectory (io/file to))
@@ -144,27 +145,36 @@
         template
         hiccup/html)))
 
-
 ;(re-find #"^blog/.*\.md$" "blog/offer.md")
 
-(defn build-file! [{:as params :keys [format from to single-templates as-assets? compile-opts]} src-file]
+(defn export-html [params src-file html]
+  (let [dest-file (dest-path params src-file)
+        dest-dir  (dest-path (assoc params :dest-path-fn drop-extension) src-file)
+        dest-index-html-file (str dest-dir "/index.html")]
+    (println (format "Export HTML to file %s" dest-file))
+    (when (and html src-file (not (.isDirectory src-file)))
+      (spit dest-file html))
+    (println (format "Export HTML to %s" dest-index-html-file))
+    (when (and html src-file)
+      (file-utils/create-dirs! dest-dir)
+      (spit dest-index-html-file html))))
+
+(defn build-file! [{:as params :keys [from to as-assets? compile-opts]} src-file]
   (when (and from (.isDirectory (io/file from)))
     (ensure-out-dir to false))
-  (if-let [{:keys [ext]} (and src-file (file-utils/parse-path src-file))]
-    (let [dest-file (dest-path params src-file)]
-      (println (clojure.core/format "Build file %s with extension %s to %s" src-file ext dest-file))
-      (cond
-        (or as-assets? (copied-filetypes ext)) (copy-asset! params src-file)
-        (rendered-filetypes ext)               (when (and src-file (not (.isDirectory src-file)))
-                                                 (let [filename (.getPath src-file)
-                                                       ext      (file-utils/extension filename)
-                                                       contents (slurp filename)]
-                                     (spit dest-file (render params src-file ))))))))
+  (when-let [{:keys [ext]} (and src-file (file-utils/parse-path src-file))]
+    (println (format "Build file %s with extension %s" src-file ext))
+    (cond
+      (or as-assets? (copied-filetypes ext)) (copy-asset! params src-file)
+      (rendered-filetypes ext)               (->> (render params src-file)
+                                                  (export-html params src-file)))))
+
+(def ALL_MARKDOWN_FILES_EXCEPT_DRAFTS #"(?!DRAFT\.).*\.md")
 
 (defn build-dir! [{:as params :keys [from aggregate-templates single-templates to]} src-dir]
   (when aggregate-templates
     ;;list markdowns file except the ones starting with DRAFT.
-    (let [all-markdowns-with-meta (md/list-markdowns-with-meta src-dir #"(?!DRAFT\.).*\.md")]
+    (let [all-markdowns-with-meta (md/list-markdowns-with-meta src-dir ALL_MARKDOWN_FILES_EXCEPT_DRAFTS)]
       (doseq [template aggregate-templates]
         (println "build-dir!" src-dir params template)
         (let [content (template all-markdowns-with-meta)
@@ -325,7 +335,7 @@ end tell ")))
   ([{:keys [from to single-templates] :as params}]
    `(do
       (require 'environ.core)
-      (println (format "Define Staticly builder for %s: markdowns in \"%s\" dir rendered using single-templates mapping %s exported to dir \"%s\"" ~(str *ns*) ~from ~single-templates ~to))
+      (println (format "Define Staticly builder for %s: rendering markdowns in \"%s\" dir using single-templates mapping %s exported to dir \"%s\"" ~(str *ns*) ~from ~single-templates ~to))
       (emit-page-build ~params)
       (when (not= "CLOUDFLARE" (environ.core/env :build-context))
         (~(symbol (str *ns*) BUILD_FN_NAME))

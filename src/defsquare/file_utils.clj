@@ -1,6 +1,9 @@
 (ns defsquare.file-utils
   (:require [clojure.java.io :as io])
-  (:import [java.io File]))
+  (:import [java.net URI]
+           [java.nio.file Files Path]
+           [java.nio.file.attribute  FileAttribute  PosixFilePermissions]
+           [java.io File]))
 
 (defmacro ^:private predicate [s path]
   `(if ~path
@@ -127,14 +130,18 @@
   (when-let [parent (parent (file f))]
     (cons parent (lazy-seq (parents parent)))))
 
-(defn parse-path "Given a file return a map with following keys: dir root base name ext, nil if file doesn't exist" [f]
-  (when (and (exists? f) (not (directory? f)))
-    {:dir  (.toString (parent f))
-     :root (.toString (last (parents f)))
-     :base (base-name f)
-     :name (name f)
-     :absolute (.getAbsolutePath f)
-     :ext  (extension f)}))
+(defn parse-path
+  "Given a file return a map with following keys: dir root base name ext, nil if file doesn't exist.
+  Ex.: /tmp/"
+  [f]
+  (if-let [f (if (string? f) (file f) f)]
+    (when (and (exists? f) (not (directory? f)))
+      {:dir      (.toString (parent f))
+       :root     (.toString (last (parents f)))
+       :base     (base-name f)
+       :name     (name f)
+       :absolute (.getAbsolutePath f)
+       :ext      (extension f)})))
 
 (defn name-starts-with? [s file]
   (let [{:keys [dir root base name ext]} (parse-path file)]
@@ -156,11 +163,50 @@
   (or (ext? "md" file) (ext? "markdown" file)))
 
 (defn re-match-filename? [re file]
-  (let [{:keys [dir root base name ext] :as all} (parse-path file)]
-    (re-matches re base)))
+  (when file
+    (println "rematchfilename" re file)
+    (let [{:keys [dir root base name ext] :as all} (parse-path file)]
+      (println "parse-path" all)
+      (re-matches re base))))
 
 (defn list-files
   ([dir]
    (filter (comp not directory?) (file-seq (io/file dir))))
   ([dir pred]
    (filter pred (list-files dir))))
+
+(defn- as-path
+  ^Path [path]
+  (if (instance? Path path) path
+      (if (instance? URI path)
+        (java.nio.file.Paths/get ^URI path)
+        (.toPath (io/file path)))))
+
+(defn str->posix
+  "Converts a string to a set of PosixFilePermission."
+  [s]
+  (PosixFilePermissions/fromString s))
+
+(defn- ->posix-file-permissions [s]
+  (cond (string? s) (str->posix s)
+        :else s))
+
+(defn- posix->file-attribute [x]
+  (PosixFilePermissions/asFileAttribute x))
+
+(defn- posix->attrs
+  ^"[Ljava.nio.file.attribute.FileAttribute;" [posix-file-permissions]
+  (let [attrs (if posix-file-permissions
+                (-> posix-file-permissions
+                    (->posix-file-permissions)
+                    (posix->file-attribute)
+                    vector)
+                [])]
+    (into-array FileAttribute attrs)))
+
+(defn create-dirs!
+  "Creates directories using `Files#createDirectories`. Also creates parents if needed.
+  Doesn't throw an exception if the the dirs exist already. Similar to mkdir -p"
+  ([path] (create-dirs! path nil))
+  ([path {:keys [:posix-file-permissions]}]
+   (Files/createDirectories (as-path path) (posix->attrs posix-file-permissions))))
