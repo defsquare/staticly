@@ -20,14 +20,14 @@ An opinionated Static-Site Generator associating [Clojure](https://clojure.org),
     - [Page rendering from Markdown files with a template](#page-rendering-from-markdown-files-with-a-template)
         - [Basic Usage](#basic-usage)
         - [Advanced usage: functions outputting specific HTML for some markdown elements](#advanced-usage-functions-outputting-specific-html-for-some-markdown-elements)
-        - [Conventions:](#conventions)
+        - [Conventions](#conventions)
         - [Example](#example)
     - [Blog rendering with Markdown files](#blog-rendering-with-markdown-files)
+- [Hosting](#hosting)
+    - [Cloudflare hosting](#cloudflare-hosting)
 - [Metadata and front-matter](#metadata-and-front-matter)
     - [YAML front-matter](#yaml-front-matter)
     - [EDN front-matter](#edn-front-matter)
-- [hosting](#hosting)
-    - [Cloudflare hosting](#cloudflare-hosting)
 
 <!-- markdown-toc end -->
 
@@ -154,24 +154,14 @@ Two "template" functions to implement :
 Staticly provides a macro `def-page-builder` that:
 *
 
-# Metadata and front-matter
 
-## YAML front-matter
-
-TODO
-
-## EDN front-matter
-
-TODO
-
-# hosting
+# Hosting
 
 ## Cloudflare hosting
 
-
-You should define a project on [Clouflare Pages](https://developers.cloudflare.com/pages/get-started/)
+Define a project on [Clouflare Pages](https://developers.cloudflare.com/pages/get-started/)
 ![Clouflare build conf](cloudflare-build-conf.jpg "Cloudflare Build Configuration Example") 
-You should have a dedicated shell script that will be invoked by the Cloudflare CI associated with a `build` namespace that will invoke all the included namespace.
+Write a `build` namespace that will invoke all the included namespace building your content.
 E.g.:
 
 ```clojure
@@ -183,8 +173,7 @@ E.g.:
   (pages/build!)
   (shutdown-agents))
 ```
-
-Then a simple shell script like this should be invoked by the CI (note we just install Clojure on the default Cloudflare image):
+Write a shell script invoking the previous build ns that will be invoked by the Cloudflare's CI (note we just install Clojure on the default Cloudflare image):
 
 ``` shell
 #!/bin/bash
@@ -207,3 +196,13 @@ npx tailwindcss -i ./src/mywebsite/styles.css -o ./resources/public/css/mywebsit
 
 ```
  
+
+# Metadata and front-matter
+
+## YAML front-matter
+
+TODO
+
+## EDN front-matter
+
+TODO
