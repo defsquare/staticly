@@ -1,29 +1,56 @@
 # Staticly
 
-An opinionated Static-Site Generator associating Clojure, Hiccup, Markdown and Tailwind with the following stated goals:
+> "All science is static in the sense that it describes the unchanging aspects of things." [Franck Knight](https://en.wikipedia.org/wiki/Frank_Knight).
 
+An opinionated Static-Site Generator associating [Clojure](https://clojure.org), [Hiccup](https://github.com/weavejester/hiccup), [Markdown](https://www.markdownguide.org) and [TailwindCSS](https://tailwindcss.com) with the following stated goals:
+
+* Use **configuration by convention** whenever it's possible
 * Use Clojure's **Hiccup format** and pure clojure function for composition and templating
 * Use Markdown and provides utility to **process markdown effectively** (a la Markdoc)
-* **Good developer experience**: Reload the browser's tab(s) displaying the rendered HTML file(s) whenever a change is made to either clojure code or markdown files (so no dev Server logic in order to keep the code simple)
+* **Good developer experience** (at least on MacOS for the moment): Reload the browser's tab(s) displaying the rendered HTML file(s) whenever a change is made to either clojure code or markdown files (so no dev Server logic in order to keep the code simple) using AppleScript interacting with Safari.
 * **Tailwind CSS friendly**, as it's a very efficient way of doing styling.
 * **Target static page hosting** with a CI/CD mechanism like [Cloudflare Pages](https://pages.cloudflare.com) that will build and host your HTML files (example in section [Cloudflare Hosting](#cloudflare-hosting))
 
+<!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-refresh-toc -->
+**Table of Contents**
+
+- [Staticly](#staticly)
+- [Usage](#usage)
+    - [Rendering with everything in a Clojure `render` function](#rendering-with-everything-in-a-clojure-render-function)
+    - [Page rendering from Markdown files with a template](#page-rendering-from-markdown-files-with-a-template)
+        - [Basic Usage](#basic-usage)
+        - [Advanced usage: functions outputting specific HTML for some markdown elements](#advanced-usage-functions-outputting-specific-html-for-some-markdown-elements)
+        - [Conventions:](#conventions)
+        - [Example](#example)
+    - [Blog rendering with Markdown files](#blog-rendering-with-markdown-files)
+- [Metadata and front-matter](#metadata-and-front-matter)
+    - [YAML front-matter](#yaml-front-matter)
+    - [EDN front-matter](#edn-front-matter)
+- [hosting](#hosting)
+    - [Cloudflare hosting](#cloudflare-hosting)
+
+<!-- markdown-toc end -->
+
+
 # Usage
 
-## Rendering with everything in Clojure code
+## Rendering with everything in a Clojure `render` function
 
-You write a `render` function with no argument that just output a Hiccup data structure, you're free to use any data structure and way of structuring (or not) the content. Then you add the `def-render-builder` macro invocation at the end of the namespace that will:
+You write a `render` function in your ns, with no argument, that just output a Hiccup data structure, you're free to use any data structure and way of structuring (or not) the content. Then you add the `def-render-builder` macro invocation at the end of the namespace that will:
 
-* From the hiccup returned by the `render` function, export the HTML in the `resources/public` directory with the namespace last name as the filename with the `.html` suffix,
-* Reload the browser's tab(s) that have the namespace first name in the url,
-* E.g. the `mywebsite.index` namespace will export the rendered HTML in the `resources/public/index.html` file and reload the tab with `mywebsite` in its URL,
-* Add a `build!` function in that namespace that will do the export and reload steps describe above.
+* **Export the HTML**, from the hiccup returned by the `render` function, in the `resources/public` directory with the namespace last name as the filename with the `.html` suffix,
+* **Reload the browser's tab(s)** that have the namespace first name in the url,
+  * E.g. the `mywebsite.index` namespace will export the rendered HTML in the `resources/public/index.html` file and reload the tab with `mywebsite` in its URL,
+* **Define a `build!` function** in that namespace that will do the export and reload steps describe above.
 
 
 ```clojure
 
+(ns mywebsite.index)
+
 (require 'defsquare.staticly)
 
+;;YOU write
 (defn head []
  ...)
 
@@ -34,30 +61,92 @@ You write a `render` function with no argument that just output a Hiccup data st
  ...)
 
 (defn render []
-[:html {:lang "en"}
- (head)
- (body)
- (footer)])
- 
- (staticly/def-render-builder)
+  [:html {:lang "en"}
+    (head)
+    (body)
+    (footer)])
+
+;;WE export the html, reload the browser and define a `build!` function that do that
+(staticly/def-render-builder)
 
 ```
 
+## Page rendering from Markdown files with a template
 
-## Page rendering with Markdown files
+### Basic Usage 
+The idea is to have a markdown file (with a front-matter in Yaml or EDN) associated with the template defined in a Clojure function.
+You write a `page-template` function in your ns with one argument that outputs hiccup:
 
-The idea is to have a markdown file (with a front-matter in Yaml or EDN) associated with the template.
-1-arg `page-template` function with map as the first argument:
+* The only argument is a map with the keys representing the markdown: `{:keys [metadata html hiccup raw] :as markdown}` the markdown is pre-processed with hiccup, standard html and metadata from the front matter. 
 
+The template is a 1-arg `page-template` function with map as an argument representing the markdown: metadata, html, hiccup and raw content, this function should output hiccup.
 
+Staticly provices a macro `def-page-builder` you should put at the end of your namespace that will:
 
-Staticly provices a macro `def-blog-builder` you should put at the end of your namespace that will:
-- define a `build!` function to invoke whenever
-*
+- define a `build!` function in the ns to invoke whenever a change is made
+- Start a watcher thread detecting change in markdown files and invoking the `build!` function then reload the browser tabs
+
+### Advanced usage: functions outputting specific HTML for some markdown elements
+
+We rely on the great [nextjournal/markdown library](https://github.com/nextjournal/markdown) to be able to customize the emitted HTML from the markdown (see the `page-transform` function in the example below). Staticly offers shortcut functions for transforming markdown to hiccup (`->hiccup`, `normalize` and `into-markup`). Here is the [list of the available keys to bind your markdown->hiccup renderer with](https://github.com/nextjournal/markdown/blob/main/src/nextjournal/markdown/transform.cljc#L66).
+
+### Conventions
+
+* The markdown files must sit in the directory with the same name as your ns last name: `website.pages` means the markdowns are in the `pages` directory at the root of your repo 
+* The exported HTML files are named from the markdown file name: `my-specific-content.md` means the HTML is named as `my-specific-content.html`
+
+### Example
+
+``` clojure
+(ns mywebsite.pages
+  (:require [defsquare.markdown :as md]
+            [defsquare.staticly :as staticly]
+            [mywebsite.common :refer [footer page-header menu-entries]]))
+
+(defn page-transform [metadata raw]
+  (let [metadata (md/parse-metadata-str raw)
+        data (-> raw md/drop-metadata-str md/parse)]
+    (md/->hiccup {:heading (fn [_ctx node]
+                                 (case (:heading-level node)
+                                   1 [:h1 {:class "font-title ml-2 mb-8 underline decoration-solid decoration-accent underline-offset-8"
+                                           :id    (md/normalize (get-in node [:content 0 :text]))}
+                                      (get-in node [:content 0 :text])]
+                                   2 [:h2 {:class "font-title text-xl ml-2 mb-8decoration-solid decoration-accent underline-offset-8"
+                                           :id    (md/normalize (get-in node [:content 0 :text]))}
+                                      (get-in node [:content 0 :text])]
+                                   [(keyword (str "h" (:heading-level node))) {} (get-in node [:content 0 :text])]))
+                  :bullet-list (partial md/into-markup [:ul])
+                  :list-item   (partial md/into-markup [:li {:class "font-body text-gray-700" :style "list-style-type: square"}])
+                  :paragraph   (partial md/into-markup [:section {:class "font-body sm:ml-1 ml-2 mt-8 text-gray-700"}])
+                  :plain       (partial md/into-markup [:p {:class "font-body text-gray-700"}])}
+      data)))
+
+(defn page-template [{:keys [metadata html hiccup raw] :as markdown}]
+  [:html {:lang "en"}
+   (head (:head metadata))
+   [:body {:class "antialiased"}
+    (page-header "img/logo/logo-mywebsite.svg"
+                 (menu-entries ["Services" "Products" "Blog" "Company"] "Services")
+                 [:div
+                  [:span {:class "text-accent"} (:baseline1 metadata)]
+                  [:span {:class "text-gray-100"}
+                   (str " " (:baseline2 metadata))]
+                  [:br {:class "xl:hidden"}]
+                  ])
+    [:div {:class "page container mx-auto"}
+      [:div {:class "flex flex-wrap mb-16"}
+       [:div {:class "w-full bg-white leading-normal relative max-w-3xl mx-auto flex-none"}
+        (page-transform metadata raw)
+        ]]]
+   (footer)])
+
+(staticly/def-page-builder)
+
+```
 
 ## Blog rendering with Markdown files
 
-two "template" functions to implement :
+Two "template" functions to implement :
 
 * `post-template`
 * `home-template`
@@ -65,18 +154,56 @@ two "template" functions to implement :
 Staticly provides a macro `def-page-builder` that:
 *
 
+# Metadata and front-matter
+
+## YAML front-matter
+
+TODO
+
+## EDN front-matter
+
+TODO
+
 # hosting
 
 ## Cloudflare hosting
 
+
+You should define a project on [Clouflare Pages](https://developers.cloudflare.com/pages/get-started/)
+![Clouflare build conf](cloudflare-build-conf.jpg "Cloudflare Build Configuration Example") 
 You should have a dedicated shell script that will be invoked by the Cloudflare CI associated with a `build` namespace that will invoke all the included namespace.
 E.g.:
 
 ```clojure
+(ns mywebsite.build)
+
 (defn -main [& args]
   (index/build!)
   (blog/build!)
   (pages/build!)
   (shutdown-agents))
+```
+
+Then a simple shell script like this should be invoked by the CI (note we just install Clojure on the default Cloudflare image):
+
+``` shell
+#!/bin/bash
+
+curl -O https://download.clojure.org/install/linux-install-1.11.1.1165.sh
+chmod +x linux-install-1.11.1.1165.sh
+sudo ./linux-install-1.11.1.1165.sh
+
+clojure -m mywebsite.build
+
+if [ $? -eq 0 ]; then
+    echo "My website successfully built!"
+else
+    echo "Failure during website build, check what's gone wrong!"
+    exit $?
+fi
+
+# don't forget to build the CSS
+npx tailwindcss -i ./src/mywebsite/styles.css -o ./resources/public/css/mywebsite.css
+
 ```
  
