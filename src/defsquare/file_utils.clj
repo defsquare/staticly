@@ -3,7 +3,8 @@
   (:import [java.net URI]
            [java.nio.file Files Path]
            [java.nio.file.attribute  FileAttribute  PosixFilePermissions]
-           [java.io File]))
+           [java.io File])
+  (:refer-clojure :exclude [name parents]))
 
 (defmacro ^:private predicate [s path]
   `(if ~path
@@ -164,9 +165,7 @@
 
 (defn re-match-filename? [re file]
   (when file
-    (println "rematchfilename" re file)
     (let [{:keys [dir root base name ext] :as all} (parse-path file)]
-      (println "parse-path" all)
       (re-matches re base))))
 
 (defn list-files

@@ -21,6 +21,4 @@
 
          environ/environ                     {:mvn/version "1.2.0"}
          }
- :aliases {:dev       {:extra-deps        {  hawk/hawk {:mvn/version "0.2.11"}}}
-           :run-m     {:main-opts ["-m" "defsquare.main"]}
-           }}
+ :aliases {:dev       {:extra-deps        {  hawk/hawk {:mvn/version "0.2.11"}}}}}

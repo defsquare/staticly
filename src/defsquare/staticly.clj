@@ -10,8 +10,8 @@
             [hiccup.core :as hiccup]
 
             [defsquare.markdown :as md]
-            [defsquare.file-utils :as file-utils]
-            [defsquare.staticly :as staticly]))
+            [defsquare.file-utils :as file-utils])
+  )
 
 (defn canonical-path [path-or-file]
   (-> (io/file path-or-file)
@@ -74,7 +74,7 @@
 (def copied-filetypes #{"jpg" "png" "svg" "css"})
 
 (defn- dest-path [{:as params :keys [from to dest-path-fn]} path]
-  (println "dest-path" params path)
+;  (println "dest-path" params path)
   (let [out-path-fn (or dest-path-fn drop-extension)
         single-file? (= path from)
         to-dir? (or (.isDirectory (io/file to))
@@ -137,7 +137,7 @@
 (defmethod render "md" [params file]
   (println (format "Render file %s" file))
   (let [template (determine-template params file)]
-    (println (format "DEBUG Render file %s %s %s" file template params))
+    ;(println (format "DEBUG Render file %s %s %s" file template params))
     ;(println (type template))
     (-> file
         slurp
@@ -176,7 +176,6 @@
     ;;list markdowns file except the ones starting with DRAFT.
     (let [all-markdowns-with-meta (md/list-markdowns-with-meta src-dir ALL_MARKDOWN_FILES_EXCEPT_DRAFTS)]
       (doseq [template aggregate-templates]
-        (println "build-dir!" src-dir params template)
         (let [content (template all-markdowns-with-meta)
               dest-file (str to java.io.File/separator "index.html")]
           (println (clojure.core/format "Build directory %s with aggregate-template %s to %s" from (str template) to))
@@ -208,6 +207,7 @@
 
 
 (defn reload-safari-tab! [s]
+  (println (str  "Reload Safari tab containing \"" s "\""))
   (shell/sh "osascript" :in (str " tell application \"Safari\"
    set windowList to every window
    repeat with aWindow in windowList
@@ -282,11 +282,12 @@ end tell ")))
    (let [{:keys [project-name doc-name]} (execution-context)
          export-dir                      PUBLIC_DIR
          export-file                     (str export-dir doc-name ".html")]
-     `(defbuilder {:to          ~export-file
+     `(def-render-builder {:to          ~export-file
                    :render-fn   "render"
                    :reload-word ~project-name})))
   ([{:keys [to render-fn reload-word] :as params}]
    `(do
+      (require 'environ.core)
       (println (format "Def Staticly builder: rendering function \"%s\" exporting HTML to %s" ~render-fn ~to))
       (emit-export ~to)
       (emit-build ~reload-word ~render-fn)
@@ -299,8 +300,7 @@ end tell ")))
     `(defn ~(symbol BUILD_FN_NAME) []
        (staticly/build! ~params)
        (when (not= "CLOUDFLARE" (environ.core/env :build-context))
-         (reload-safari-tab! ~(:reload-word params))
-         (println (format "Reload Safari tab containing \"" ~(:reload-word params) "\""))))))
+         (reload-safari-tab! ~(:reload-word params))))))
 
 (defmacro def-blog-builder
   ([]
@@ -312,6 +312,7 @@ end tell ")))
                          :reload-word          ~project-name})))
   ([{:keys [from to single-templates aggregate-templates] :as params}]
    `(do
+      (require 'environ.core)
       (println (format "Define Staticly Blog builder: markdowns in %s dir rendered using single-template %s and aggregate-template %s exported to %s" ~from ~single-templates ~aggregate-templates ~to))
       (emit-md-build ~params)
       (when (not= "CLOUDFLARE" (environ.core/env :build-context))
@@ -322,8 +323,7 @@ end tell ")))
   `(defn ~(symbol BUILD_FN_NAME) []
      (staticly/build! ~params)
      (when (not= "CLOUDFLARE" (environ.core/env :build-context))
-       (staticly/reload-safari-tab! ~(:reload-word params))
-       (println (format "Reload safari tab containing \"defsquare\"")))))
+       (staticly/reload-safari-tab! ~(:reload-word params)))))
 
 (defmacro def-page-builder
   ([]

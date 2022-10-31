@@ -209,7 +209,7 @@ key2: value2
    (map parse-metadata (file-utils/list-files dir file-utils/markdown?)))
   ([dir re-filename-to-match]
    (let [files (file-utils/list-files dir (partial file-utils/re-match-filename? re-filename-to-match))]
-     (println "List markdowns" (map str files))
+     ;(println "List markdowns" (map str files))
      (map parse-metadata files))))
 
 ;(all-markdowns-with-meta "blog")
