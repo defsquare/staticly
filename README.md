@@ -195,7 +195,6 @@ fi
 npx tailwindcss -i ./src/mywebsite/styles.css -o ./resources/public/css/mywebsite.css
 
 ```
- 
 
 # Metadata and front-matter
 

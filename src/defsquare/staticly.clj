@@ -169,15 +169,17 @@
       (rendered-filetypes ext)               (->> (render params src-file)
                                                   (export-html params src-file)))))
 
-(def ALL_MARKDOWN_FILES_EXCEPT_DRAFTS #"(?!DRAFT\.).*\.md")
+(def ALL_MARKDOWN_FILES_EXCEPT_DRAFTS #"(?!DRAFT).*\.md")
 
 (defn build-dir! [{:as params :keys [from aggregate-templates single-templates to]} src-dir]
   (when aggregate-templates
     ;;list markdowns file except the ones starting with DRAFT.
     (let [all-markdowns-with-meta (md/list-markdowns-with-meta src-dir ALL_MARKDOWN_FILES_EXCEPT_DRAFTS)]
       (doseq [template aggregate-templates]
+        (println "all-markdowns-with-meta" template src-dir all-markdowns-with-meta)
         (let [content (template all-markdowns-with-meta)
               dest-file (str to java.io.File/separator "index.html")]
+          (println content "content")
           (println (clojure.core/format "Build directory %s with aggregate-template %s to %s" from (str template) to))
           (spit dest-file (hiccup/html content)))))))
 
@@ -308,7 +310,7 @@ end tell ")))
      `(def-blog-builder {:from                ~doc-name
                          :to                  (str PUBLIC_DIR ~doc-name)
                          :single-templates    {(str "^.*" ~doc-name "/.*\\.md$") ~(symbol "post-template")}
-                         :aggregate-templates [(symbol "home-template")]
+                         :aggregate-templates [~(symbol "home-template")]
                          :reload-word          ~project-name})))
   ([{:keys [from to single-templates aggregate-templates] :as params}]
    `(do
