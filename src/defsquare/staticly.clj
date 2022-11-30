@@ -5,12 +5,15 @@
             [clojure.tools.logging :as log]
             [clojure.java.shell :as shell]
 
-
             [hickory.core :as hickory :refer [as-hiccup parse-fragment]]
             [hiccup.core :as hiccup]
 
+            [clj-rss.core :as rss]
+
             [defsquare.markdown :as md]
             [defsquare.file-utils :as file-utils])
+  (:import [java.nio.file Paths FileSystems WatchEvent$Kind StandardWatchEventKinds]
+           [java.io File])
   )
 
 (defn canonical-path [path-or-file]
@@ -171,17 +174,28 @@
 
 (def ALL_MARKDOWN_FILES_EXCEPT_DRAFTS #"(?!DRAFT).*\.md")
 
-(defn build-dir! [{:as params :keys [from aggregate-templates single-templates to]} src-dir]
-  (when aggregate-templates
-    ;;list markdowns file except the ones starting with DRAFT.
-    (let [all-markdowns-with-meta (md/list-markdowns-with-meta src-dir ALL_MARKDOWN_FILES_EXCEPT_DRAFTS)]
+(defn export-rss! [to markdowns]
+  (let [rss-xml (rss/channel-xml
+   {:title "Defsquare's Blog" :link "https://defsquare.com/blog" :description "Blog about software design and architecture, Domain-Driven Design, clojure"}
+   (map (fn [{:keys [timestamp title author path summary] :as markdown}]
+          {:title title :author author}
+          ) markdowns))]
+      (println (format "Export RSS feed to rss.xml"))
+      (spit (str to File/separator "rss.xml") rss-xml)))
+
+(defn build-dir! [{:as params :keys [baseurl from aggregate-templates to export-rss?]} src-dir]
+  ;;list markdowns file except the ones starting with DRAFT.
+  (let [all-markdowns-with-meta (md/list-markdowns-with-meta src-dir ALL_MARKDOWN_FILES_EXCEPT_DRAFTS)]
+    (when export-rss?
+      (export-rss! to all-markdowns-with-meta))
+    (when aggregate-templates
       (doseq [template aggregate-templates]
-        (println "all-markdowns-with-meta" template src-dir all-markdowns-with-meta)
-        (let [content (template all-markdowns-with-meta)
+                                        ;(println "all-markdowns-with-meta" template src-dir all-markdowns-with-meta)
+        (let [content   (template all-markdowns-with-meta)
               dest-file (str to java.io.File/separator "index.html")]
-          (println content "content")
-          (println (clojure.core/format "Build directory %s with aggregate-template %s to %s" from (str template) to))
+          (println (format "Build directory %s with aggregate-template %s to %s" from (str template) to))
           (spit dest-file (hiccup/html content)))))))
+
 
 (defn build!
   "Builds a static web site based on the content specified in specs. Each build-desc should be a mapping of paths, with additional
@@ -192,8 +206,10 @@
     * `:aggregate-templates` - vector of templates as function wich takes the return of `all-markdowns-with-meta`
 
     * `:out-path-fn` - Function used for naming compilation output
+    * `:baseurl` - website will be served from this base URL
     * `:to-format`   - Literal format to use for export!
     * `:to-format-fn` - Function of input filename to format
+    * `export-rss?` - export RSS feed (default: true)
     * `:as-assets?` - Pass through as a static assets (for images, css, json or edn data, etc)
       - Note: by default, images, css, etc will pass through anyway
   Additional options pertinent to the entire build process may be passed in:
@@ -225,11 +241,11 @@ end tell ")))
 (def watcher-state (atom :stopped))
 
 (defn start-watcher! [dir build-fn]
+  (println (format "Start file watcher of files in dir %s" dir))
   (if (= :stopped @watcher-state)
-    (let [path      (java.nio.file.Paths/get dir (into-array java.lang.String []))
-          watch-svc (.newWatchService (java.nio.file.FileSystems/getDefault))]
-      (.register path watch-svc (into-array java.nio.file.WatchEvent$Kind [java.nio.file.StandardWatchEventKinds/ENTRY_MODIFY]))
-      (println (format "Start file watcher of files in dir %s" dir))
+    (let [path      (Paths/get dir (into-array String []))
+          watch-svc (.newWatchService (FileSystems/getDefault))]
+      (.register path watch-svc (into-array WatchEvent$Kind [StandardWatchEventKinds/ENTRY_MODIFY]))
       (async/go
         (while true
           (let [key (.take watch-svc)]
@@ -298,28 +314,47 @@ end tell ")))
       nil)))
 
 (defmacro emit-md-build [params]
-  (let []
-    `(defn ~(symbol BUILD_FN_NAME) []
-       (staticly/build! ~params)
-       (when (not= "CLOUDFLARE" (environ.core/env :build-context))
-         (reload-safari-tab! ~(:reload-word params))))))
+  `(defn ~(symbol BUILD_FN_NAME) []
+     (staticly/build! ~params)
+     (when (not= "CLOUDFLARE" (environ.core/env :build-context))
+       (reload-safari-tab! (:reload-word ~params)))))
+
+(defmacro check-symbol-presence [symbol-name]
+  `(try
+     ~(symbol symbol-name)
+    (catch RuntimeException re
+      (println "catch " re)
+      )))
+
+(defn assert-symbol-present?
+  "Check if the symbol is present in the ns it is invoked in"
+  [s]
+  (assert (resolve (symbol s)) (format "Symbol %s must be present in ns %s" s *ns*)))
+
+(defmacro default-blog-params []
+  (assert-symbol-present? "post-template")
+  (assert-symbol-present? "home-template")
+  (assert-symbol-present? "tag-template")
+  (let [{:keys [project-name doc-name]} (execution-context)]
+    `{:from                ~doc-name
+      :to                  (str PUBLIC_DIR ~doc-name)
+      :single-templates    {(str "^.*" ~doc-name "/.*\\.md$") ~(symbol "post-template")}
+      :aggregate-templates [~(symbol "home-template") ~(symbol "tag-template")]
+      :export-rss?         true
+      :reload-word         ~project-name}))
 
 (defmacro def-blog-builder
   ([]
-   (let [{:keys [project-name doc-name]} (execution-context)]
-     `(def-blog-builder {:from                ~doc-name
-                         :to                  (str PUBLIC_DIR ~doc-name)
-                         :single-templates    {(str "^.*" ~doc-name "/.*\\.md$") ~(symbol "post-template")}
-                         :aggregate-templates [~(symbol "home-template")]
-                         :reload-word          ~project-name})))
-  ([{:keys [from to single-templates aggregate-templates] :as params}]
+   `(def-blog-builder {}))
+  ([params]
    `(do
-      (require 'environ.core)
-      (println (format "Define Staticly Blog builder: markdowns in %s dir rendered using single-template %s and aggregate-template %s exported to %s" ~from ~single-templates ~aggregate-templates ~to))
-      (emit-md-build ~params)
-      (when (not= "CLOUDFLARE" (environ.core/env :build-context))
-        (~(symbol (str *ns*) BUILD_FN_NAME))
-        (staticly/start-watcher! ~from ~(symbol (str *ns*) BUILD_FN_NAME))))))
+      (let [params# (merge (default-blog-params) ~params)]
+        (require 'environ.core)
+        (println (format "Define Staticly Blog builder: markdowns in %s dir rendered using single-template %s and aggregate-template %s exported to %s" (:from params#) (:single-templates params#) (:aggregate-templates params#) (:to params#)))
+        (emit-md-build params#)
+        (when (not= "CLOUDFLARE" (environ.core/env :build-context))
+          (~(symbol (str *ns*) BUILD_FN_NAME))
+          (staticly/start-watcher! (:from params#) ~(symbol (str *ns*) BUILD_FN_NAME)))))))
 
 (defmacro emit-page-build [params]
   `(defn ~(symbol BUILD_FN_NAME) []
