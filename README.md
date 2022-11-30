@@ -148,10 +148,11 @@ We rely on the great [nextjournal/markdown library](https://github.com/nextjourn
 
 Two "template" functions to implement :
 
-* `post-template`
-* `home-template`
+* `post-template`: template that outputs HTML for a single markdown file
+* `home-template`: template that outputs HTML given all the markdowns
+* `tag-template`: template that outputs HTML for a given tag (holding a set of markdown files)
 
-Staticly provides a macro `def-page-builder` that:
+Staticly provides a macro `def-blog-builder` that:
 *
 
 
