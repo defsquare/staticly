@@ -5,72 +5,16 @@
             [clojure.tools.logging :as log]
             [clojure.java.shell :as shell]
 
-            [hickory.core :as hickory :refer [as-hiccup parse-fragment]]
-            [hiccup.core :as hiccup]
-
-            [clj-rss.core :as rss]
-
+            [hiccup2.core :as hiccup]
             [defsquare.markdown :as md]
-            [defsquare.file-utils :as file-utils])
+        ;    [defsquare.hiccup :as hiccup]
+            [defsquare.file-utils :as file-utils :refer [canonical-path relative-path strip-path-seps join-paths drop-extension html-extension extension file-separator ensure-out-dir]]
+            [defsquare.rss :refer [export-rss!]])
+
   (:import [java.nio.file Paths FileSystems WatchEvent$Kind StandardWatchEventKinds]
            [java.io File])
   )
 
-(defn canonical-path [path-or-file]
-  (-> (io/file path-or-file)
-      (.getCanonicalFile)
-      (.getPath)))
-
-(defn relative-path [path base]
-  (str/replace (canonical-path path)
-               (canonical-path base)
-               ""))
-
-(defn strip-path-seps [path]
-  (if (= (last path)
-         (java.io.File/separatorChar))
-    (strip-path-seps (apply str (drop-last path)))
-    path))
-
-(defn join-paths [path1 path2]
-  (str (strip-path-seps path1)
-       (java.io.File/separatorChar)
-       path2))
-
-(defn- drop-extension [relative-path]
-  (subs (str/replace relative-path #"\.\w*$" "") 1))
-
-(defn- html-extension [relative-path]
-  (let [path (str/replace relative-path #"\.\w*$" ".html")]
-    (when (not (str/blank? path))
-      (subs path 1))))
-
-(defn- extension [x]
-  (case (type x)
-    java.lang.String (last (str/split x #"\."))
-    java.io.File     (extension (.getPath x))))
-
-(defn- file-separator
-  "This function returns the platform specific file separator
-   and handles some platform specific issues as they arise.
-   One particular issue is that the value returned by the File
-   API on windows '\\' breaks the re-pattern function."
-  []
-  (let [separator (java.io.File/separator)]
-    ;; Windows, replace with double escape.
-    (str/replace separator "\\" "\\\\")))
-
-(defn- ensure-out-dir [out-path drop-last?]
-  (let [split-path (str/split out-path (re-pattern (file-separator)))
-        split-path (if drop-last? (drop-last split-path) split-path)
-        intermediate-paths (map-indexed
-                             (fn [i _]
-                               (str/join (file-separator) (take (inc i) split-path)))
-                             split-path)]
-    (doseq [path intermediate-paths]
-      (let [file (io/file path)]
-        (when-not (.isDirectory file)
-          (.mkdir file))))))
 
 (def rendered-filetypes #{"md" "mds" "clj" "cljc" "cljs" "yaml" "json" "edn"})
 
@@ -91,44 +35,15 @@
       (let [dest (dest-path-fn relative-from-path)]
         (join-paths (or to ".") dest)))))
 
+(defn dest-url [{:as params :keys [from baseurl dest-path-fn]} path]
+  (str baseurl "/" (dest-path-fn (if (= path from) path (relative-path path from)))))
+
 (defn copy-asset! [params file]
   (let [dest-path (dest-path (assoc params :dest-path-fn identity) (.getPath file) )]
     (ensure-out-dir dest-path true)
     (println (format "Copy file %s to %s" file dest-path))
     (io/copy file (io/file dest-path)) ))
 
-(defn- replace-nil-with-blank [v]
-  (map (fn [x] (if x x "")) v))
-
-(defn- remove-empty-form [x]
-  (if (and (string? x) (clojure.string/blank? x))
-    nil
-    (if (vector? x)
-      (if (= 2 (count x))
-        (vec (replace-nil-with-blank x))
-        (vec (filter remove-empty-form x)))
-      (if (and (map? x) (empty? x))
-        nil
-        x))))
-
-(defn clean-hiccup [hiccup]
-  (clojure.walk/postwalk remove-empty-form hiccup))
-
-(defn html-str->hiccup [html-str]
-  (->> html-str
-       hickory/parse-fragment
-       (map hickory/as-hiccup)
-       clean-hiccup))
-
-(defn html-file->hiccup [f]
-  (html-str->hiccup (slurp f)))
-
-(defn html->hiccup [html]
-  (let [f (io/file html)
-        s (if (.exists f)
-            (slurp f)
-            html)]
-    (html-str->hiccup s)))
 
 (defn determine-template [{:keys [single-templates] :as params} file]
   (some (fn [[re-string template]] (when (re-find (re-pattern re-string) (.getPath file))
@@ -162,6 +77,23 @@
       (file-utils/create-dirs! dest-dir)
       (spit dest-index-html-file html))))
 
+
+(def ALL_MARKDOWN_FILES_EXCEPT_DRAFTS #"(?!DRAFT).*\.md")
+
+
+(defn build-dir! [{:as params :keys [baseurl from aggregate-templates to export-rss?]} src-dir]
+  ;;list markdowns file except the ones starting with DRAFT.
+  (let [all-markdowns-with-meta (md/list-markdowns-with-meta src-dir ALL_MARKDOWN_FILES_EXCEPT_DRAFTS)]
+    (when export-rss?
+      (export-rss! params all-markdowns-with-meta))
+    (when aggregate-templates
+      (doseq [template aggregate-templates]
+                                        ;(println "all-markdowns-with-meta" template src-dir all-markdowns-with-meta)
+        (let [content   (template all-markdowns-with-meta)
+              dest-file (str to (file-separator) "index.html")]
+          (println (format "Build directory %s with aggregate-template %s to %s" from (str template) to))
+          (spit dest-file (hiccup/html content)))))))
+
 (defn build-file! [{:as params :keys [from to as-assets? compile-opts]} src-file]
   (when (and from (.isDirectory (io/file from)))
     (ensure-out-dir to false))
@@ -171,31 +103,6 @@
       (or as-assets? (copied-filetypes ext)) (copy-asset! params src-file)
       (rendered-filetypes ext)               (->> (render params src-file)
                                                   (export-html params src-file)))))
-
-(def ALL_MARKDOWN_FILES_EXCEPT_DRAFTS #"(?!DRAFT).*\.md")
-
-(defn export-rss! [to markdowns]
-  (let [rss-xml (rss/channel-xml
-   {:title "Defsquare's Blog" :link "https://defsquare.com/blog" :description "Blog about software design and architecture, Domain-Driven Design, clojure"}
-   (map (fn [{:keys [timestamp title author path summary] :as markdown}]
-          {:title title :author author}
-          ) markdowns))]
-      (println (format "Export RSS feed to rss.xml"))
-      (spit (str to File/separator "rss.xml") rss-xml)))
-
-(defn build-dir! [{:as params :keys [baseurl from aggregate-templates to export-rss?]} src-dir]
-  ;;list markdowns file except the ones starting with DRAFT.
-  (let [all-markdowns-with-meta (md/list-markdowns-with-meta src-dir ALL_MARKDOWN_FILES_EXCEPT_DRAFTS)]
-    (when export-rss?
-      (export-rss! to all-markdowns-with-meta))
-    (when aggregate-templates
-      (doseq [template aggregate-templates]
-                                        ;(println "all-markdowns-with-meta" template src-dir all-markdowns-with-meta)
-        (let [content   (template all-markdowns-with-meta)
-              dest-file (str to java.io.File/separator "index.html")]
-          (println (format "Build directory %s with aggregate-template %s to %s" from (str template) to))
-          (spit dest-file (hiccup/html content)))))))
-
 
 (defn build!
   "Builds a static web site based on the content specified in specs. Each build-desc should be a mapping of paths, with additional
@@ -218,11 +125,12 @@
     * `:root-dir` - Static assets will be served relative to this directory (defaults to greatest-common-path between all paths)
   "
   [params]
-  (let [{:keys [from] :as params} (merge {:dest-path-fn html-extension} params)]
+  (let [{:keys [from] :as params} (merge {:dest-path-fn html-extension} params)
+        files (file-seq (io/file from))
+        markdowns (map (fn [file] ) files)]
     (build-dir! params from)
-    (doseq [src-file (file-seq (io/file from))]
+    (doseq [src-file files]
       (build-file! params src-file))))
-
 
 (defn reload-safari-tab! [s]
   (println (str  "Reload Safari tab containing \"" s "\""))
@@ -318,13 +226,6 @@ end tell ")))
      (staticly/build! ~params)
      (when (not= "CLOUDFLARE" (environ.core/env :build-context))
        (reload-safari-tab! (:reload-word ~params)))))
-
-(defmacro check-symbol-presence [symbol-name]
-  `(try
-     ~(symbol symbol-name)
-    (catch RuntimeException re
-      (println "catch " re)
-      )))
 
 (defn assert-symbol-present?
   "Check if the symbol is present in the ns it is invoked in"
