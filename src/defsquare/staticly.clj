@@ -5,7 +5,10 @@
             [clojure.tools.logging :as log]
             [clojure.java.shell :as shell]
 
-            [hiccup2.core :as hiccup]
+            [hiccup.core :as hiccup]
+            [defsquare.markdown :as md]
+        ;    [defsquare.hiccup :as hiccup]
+        ;
             [defsquare.markdown :as md]
         ;    [defsquare.hiccup :as hiccup]
             [defsquare.file-utils :as file-utils :refer [canonical-path relative-path strip-path-seps join-paths drop-extension html-extension extension file-separator ensure-out-dir]]
