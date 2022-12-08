@@ -1,5 +1,6 @@
 (ns defsquare.file-utils
-  (:require [clojure.java.io :as io])
+  (:require [clojure.java.io :as io]
+            [clojure.string :as str])
   (:import [java.net URI]
            [java.nio.file Files Path]
            [java.nio.file.attribute  FileAttribute  PosixFilePermissions]
@@ -209,3 +210,59 @@
   ([path] (create-dirs! path nil))
   ([path {:keys [:posix-file-permissions]}]
    (Files/createDirectories (as-path path) (posix->attrs posix-file-permissions))))
+
+(defn canonical-path [path-or-file]
+  (-> (io/file path-or-file)
+      (.getCanonicalFile)
+      (.getPath)))
+
+(defn relative-path [path base]
+  (str/replace (canonical-path path)
+               (canonical-path base)
+               ""))
+
+(defn strip-path-seps [path]
+  (if (= (last path)
+         (java.io.File/separatorChar))
+    (strip-path-seps (apply str (drop-last path)))
+    path))
+
+(defn join-paths [path1 path2]
+  (str (strip-path-seps path1)
+       (java.io.File/separatorChar)
+       path2))
+
+(defn drop-extension [relative-path]
+  (subs (str/replace relative-path #"\.\w*$" "") 1))
+
+(defn html-extension [relative-path]
+  (let [path (str/replace relative-path #"\.\w*$" ".html")]
+    (when (not (str/blank? path))
+      (subs path 1))))
+
+(defn extension [x]
+  (cond
+    (instance? java.lang.String x) (last (str/split x #"\."))
+    (instance? java.io.File x)     (extension (.getPath x))))
+
+(defn file-separator
+  "This function returns the platform specific file separator
+   and handles some platform specific issues as they arise.
+   One particular issue is that the value returned by the File
+   API on windows '\\' breaks the re-pattern function."
+  []
+  (let [separator (java.io.File/separator)]
+    ;; Windows, replace with double escape.
+    (str/replace separator "\\" "\\\\")))
+
+(defn ensure-out-dir [out-path drop-last?]
+  (let [split-path (str/split out-path (re-pattern (file-separator)))
+        split-path (if drop-last? (drop-last split-path) split-path)
+        intermediate-paths (map-indexed
+                             (fn [i _]
+                               (str/join (file-separator) (take (inc i) split-path)))
+                             split-path)]
+    (doseq [path intermediate-paths]
+      (let [file (io/file path)]
+        (when-not (.isDirectory file)
+          (.mkdir file))))))
