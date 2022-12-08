@@ -1,22 +1,17 @@
 (ns defsquare.staticly
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
-            [clojure.core.async :as async]
             [clojure.tools.logging :as log]
-            [clojure.java.shell :as shell]
 
             [hiccup.core :as hiccup]
-            [defsquare.markdown :as md]
-        ;    [defsquare.hiccup :as hiccup]
-        ;
-            [defsquare.markdown :as md]
-        ;    [defsquare.hiccup :as hiccup]
-            [defsquare.file-utils :as file-utils :refer [canonical-path relative-path strip-path-seps join-paths drop-extension html-extension extension file-separator ensure-out-dir]]
-            [defsquare.rss :refer [export-rss!]])
 
-  (:import [java.nio.file Paths FileSystems WatchEvent$Kind StandardWatchEventKinds]
-           [java.io File])
-  )
+            [defsquare.hiccup :as dh]
+            [defsquare.markdown :as md]
+            [defsquare.file-utils :as file-utils :refer [canonical-path relative-path strip-path-seps join-paths drop-extension html-extension extension file-separator ensure-out-dir]]
+            [defsquare.rss :refer [export-rss!]]
+            [defsquare.watcher :as watcher :refer [start-watcher!]]
+            [defsquare.safari :as safari :refer [reload-safari-tab!]])
+  (:import [java.io File]))
 
 
 (def rendered-filetypes #{"md" "mds" "clj" "cljc" "cljs" "yaml" "json" "edn"})
@@ -90,11 +85,11 @@
     (when export-rss?
       (export-rss! params all-markdowns-with-meta))
     (when aggregate-templates
-      (doseq [template aggregate-templates]
-                                        ;(println "all-markdowns-with-meta" template src-dir all-markdowns-with-meta)
-        (let [content   (template all-markdowns-with-meta)
-              dest-file (str to (file-separator) "index.html")]
-          (println (format "Build directory %s with aggregate-template %s to %s" from (str template) to))
+      (doseq [{:keys [template-fn file-name]} aggregate-templates]
+        (let [content   (template-fn all-markdowns-with-meta)
+                dest-file (str to (file-separator) file-name)]
+          (println "all-markdowns-with-meta" dest-file template-fn src-dir all-markdowns-with-meta)
+          (println (format "Build directory %s with aggregate-template %s to %s" from (str template-fn) to))
           (spit dest-file (hiccup/html content)))))))
 
 (defn build-file! [{:as params :keys [from to as-assets? compile-opts]} src-file]
@@ -135,38 +130,6 @@
     (doseq [src-file files]
       (build-file! params src-file))))
 
-(defn reload-safari-tab! [s]
-  (println (str  "Reload Safari tab containing \"" s "\""))
-  (shell/sh "osascript" :in (str " tell application \"Safari\"
-   set windowList to every window
-   repeat with aWindow in windowList
-      set tabList to every tab of aWindow
-      repeat with atab in tabList
-           if (URL of atab contains \"" s "\") then
-               tell atab to do Javascript \"window.location.reload()\"
-           end if
-      end repeat
-   end repeat
-end tell ")))
-
-(def watcher-state (atom :stopped))
-
-(defn start-watcher! [dir build-fn]
-  (println (format "Start file watcher of files in dir %s" dir))
-  (if (= :stopped @watcher-state)
-    (let [path      (Paths/get dir (into-array String []))
-          watch-svc (.newWatchService (FileSystems/getDefault))]
-      (.register path watch-svc (into-array WatchEvent$Kind [StandardWatchEventKinds/ENTRY_MODIFY]))
-      (async/go
-        (while true
-          (let [key (.take watch-svc)]
-            (doseq [event (.pollEvents key)]
-              (println (format "File %s changed, build" (.toString (.context event))) )
-              (build-fn))
-            (.reset key))))
-      (reset! watcher-state :started)
-      (println "Watcher thread started"))
-    (println "Watcher thread already started")))
 
 (defn ns-last-name [ns]
   (subs (str ns) (inc (clojure.string/last-index-of (str ns) "."))))
@@ -191,7 +154,7 @@ end tell ")))
      ;;invoke export
      (~(symbol EXPORT_FN_NAME) (~(symbol (str *ns*) render-fn)))
      (when (not= "CLOUDFLARE" (environ.core/env :build-context))
-       (staticly/reload-safari-tab! ~reload-word))))
+       (safari/reload-safari-tab! ~reload-word))))
 
 (defmacro emit-main [render-fn]
   `(defn ~(symbol "-main") [& args#]
@@ -228,7 +191,7 @@ end tell ")))
   `(defn ~(symbol BUILD_FN_NAME) []
      (staticly/build! ~params)
      (when (not= "CLOUDFLARE" (environ.core/env :build-context))
-       (reload-safari-tab! (:reload-word ~params)))))
+       (safari/reload-safari-tab! (:reload-word ~params)))))
 
 (defn assert-symbol-present?
   "Check if the symbol is present in the ns it is invoked in"
@@ -243,7 +206,7 @@ end tell ")))
     `{:from                ~doc-name
       :to                  (str PUBLIC_DIR ~doc-name)
       :single-templates    {(str "^.*" ~doc-name "/.*\\.md$") ~(symbol "post-template")}
-      :aggregate-templates [~(symbol "home-template") ~(symbol "tag-template")]
+      :aggregate-templates [{:template-fn ~(symbol "home-template") :file-name "index.html"} {:template-fn ~(symbol "tag-template") :file-name "tags.html"}]
       :export-rss?         true
       :reload-word         ~project-name}))
 
@@ -258,13 +221,13 @@ end tell ")))
         (emit-md-build params#)
         (when (not= "CLOUDFLARE" (environ.core/env :build-context))
           (~(symbol (str *ns*) BUILD_FN_NAME))
-          (staticly/start-watcher! (:from params#) ~(symbol (str *ns*) BUILD_FN_NAME)))))))
+          (watcher/start-watcher! (:from params#) ~(symbol (str *ns*) BUILD_FN_NAME)))))))
 
 (defmacro emit-page-build [params]
   `(defn ~(symbol BUILD_FN_NAME) []
      (staticly/build! ~params)
      (when (not= "CLOUDFLARE" (environ.core/env :build-context))
-       (staticly/reload-safari-tab! ~(:reload-word params)))))
+       (safari/reload-safari-tab! ~(:reload-word params)))))
 
 (defmacro def-page-builder
   ([]
@@ -280,4 +243,4 @@ end tell ")))
       (emit-page-build ~params)
       (when (not= "CLOUDFLARE" (environ.core/env :build-context))
         (~(symbol (str *ns*) BUILD_FN_NAME))
-        (staticly/start-watcher! ~from ~(symbol (str *ns*) BUILD_FN_NAME))))))
+        (watcher/start-watcher! ~from ~(symbol (str *ns*) BUILD_FN_NAME))))))
