@@ -12,15 +12,15 @@
 
          ;;our fork to be able to inline HTML
          io.github.nextjournal/markdown {:git/url "https://github.com/defsquare/markdown"
-                                         :sha "56e267175c621a9f9c35a633c8d786ccf4fa61e3"}
+                                         :sha     "56e267175c621a9f9c35a633c8d786ccf4fa61e3"}
 
          instaparse/instaparse {:mvn/version "1.4.12"}
 
-         hickory/hickory                     {:mvn/version "0.7.3"}
+         org.clj-commons/hickory             {:mvn/version "0.7.3"}
          camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.2"}
 
-         environ/environ                     {:mvn/version "1.2.0"}
+         environ/environ {:mvn/version "1.2.0"}
 
-         clj-rss/clj-rss                     {:mvn/version "0.4.0"}
+         clj-rss/clj-rss {:mvn/version "0.4.0"}
          }
- :aliases {:dev       {:extra-deps        {  hawk/hawk {:mvn/version "0.2.11"}}}}}
+ :aliases {:dev {:extra-deps {  hawk/hawk {:mvn/version "0.2.11"}}}}}
