@@ -13,10 +13,9 @@
             [defsquare.safari :as safari :refer [reload-safari-tab!]])
   (:import [java.io File]))
 
-
 (def rendered-filetypes #{"md" "mds" "clj" "cljc" "cljs" "yaml" "json" "edn"})
 
-(def copied-filetypes #{"jpg" "png" "svg" "css"})
+(def copied-filetypes #{"jpg" "png" "svg" "css" "html"})
 
 (defn- dest-path [{:as params :keys [from to dest-path-fn]} path]
 ;  (println "dest-path" params path)
@@ -36,34 +35,19 @@
 (defn dest-url [{:as params :keys [from baseurl dest-path-fn]} path]
   (str baseurl "/" (dest-path-fn (if (= path from) path (relative-path path from)))))
 
-(defn copy-asset! [params file]
-  (let [dest-path (dest-path (assoc params :dest-path-fn identity) (.getPath file) )]
-    (ensure-out-dir dest-path true)
-    (println (format "Copy file %s to %s" file dest-path))
-    (io/copy file (io/file dest-path)) ))
-
 
 (defn determine-template [{:keys [single-templates] :as params} file]
   (some (fn [[re-string template]] (when (re-find (re-pattern re-string) (.getPath file))
                              template)) single-templates))
 
-(defmulti render (fn [_ file]
-                   (file-utils/extension (.getPath file))))
+(defmulti build-file! (fn [_ file]
+                        (let [ext (file-utils/extension (.getPath file))]
+                          (println "build-file! %s with extension %s" file ext)
+                          (cond
+                            (copied-filetypes ext)   :copied
+                            (rendered-filetypes ext) :rendered))))
 
-(defmethod render "md" [params file]
-  (println (format "Render file %s" file))
-  (let [template (determine-template params file)]
-    ;(println (format "DEBUG Render file %s %s %s" file template params))
-    ;(println (type template))
-    (-> file
-        slurp
-        md/process
-        template
-        hiccup/html)))
-
-;(re-find #"^blog/.*\.md$" "blog/offer.md")
-
-(defn export-html [params src-file html]
+(defn write-html [params src-file html]
   (let [dest-file (dest-path params src-file)
         dest-dir  (dest-path (assoc params :dest-path-fn drop-extension) src-file)
         dest-index-html-file (str dest-dir "/index.html")]
@@ -75,11 +59,38 @@
       (file-utils/create-dirs! dest-dir)
       (spit dest-index-html-file html))))
 
+(defmethod build-file! :rendered [{:keys [from to] :as params} file]
+  (println (format "Build/render file %s" file))
+  (let [template       (determine-template params file)
+        markdown       (-> file
+                           slurp
+                           md/process)
+        templated-html (-> markdown
+                           template
+                           hiccup/html)]
+    ;(println (format "DEBUG Render file %s %s %s" file template params))
+    ;(println (type template))
+    (when (and from (.isDirectory (io/file from)))
+      (ensure-out-dir to false))
+    (write-html params file templated-html)
+    (assoc markdown :templated-html templated-html :type :markdown :file file)))
+
+(defn copy-asset! [params file]
+  (let [dest-path (dest-path (assoc params :dest-path-fn identity) (.getPath file) )]
+    (ensure-out-dir dest-path true)
+    (println (format "Copy file %s to %s" file dest-path))
+    (io/copy file (io/file dest-path))
+    {:dest-path dest-path :file file :type :asset}))
+
+(defmethod build-file! :copied [params file]
+  (println (format "Build/copy file %s" file))
+  (copy-asset! params file))
+
+;(re-find #"^blog/.*\.md$" "blog/offer.md")
 
 (def ALL_MARKDOWN_FILES_EXCEPT_DRAFTS #"(?!DRAFT).*\.md")
 
-
-(defn build-dir! [{:as params :keys [baseurl from aggregate-templates to export-rss?]} src-dir]
+(defn build-dir! [{:as params :keys [baseurl from aggregate-templates to export-rss?]} src-dir markdowns]
   ;;list markdowns file except the ones starting with DRAFT.
   (let [all-markdowns-with-meta (md/list-markdowns-with-meta src-dir ALL_MARKDOWN_FILES_EXCEPT_DRAFTS)]
     (when export-rss?
@@ -87,20 +98,24 @@
     (when aggregate-templates
       (doseq [{:keys [template-fn file-name]} aggregate-templates]
         (let [content   (template-fn all-markdowns-with-meta)
-                dest-file (str to (file-separator) file-name)]
+              dest-file (str to (file-separator) file-name)]
           (println "all-markdowns-with-meta" dest-file template-fn src-dir all-markdowns-with-meta)
           (println (format "Build directory %s with aggregate-template %s to %s" from (str template-fn) to))
           (spit dest-file (hiccup/html content)))))))
 
-(defn build-file! [{:as params :keys [from to as-assets? compile-opts]} src-file]
-  (when (and from (.isDirectory (io/file from)))
-    (ensure-out-dir to false))
-  (when-let [{:keys [ext]} (and src-file (file-utils/parse-path src-file))]
-    (println (format "Build file %s with extension %s" src-file ext))
-    (cond
-      (or as-assets? (copied-filetypes ext)) (copy-asset! params src-file)
-      (rendered-filetypes ext)               (->> (render params src-file)
-                                                  (export-html params src-file)))))
+(defn markdown-extension? [file] (= "md" (:ext (file-utils/parse-path file))))
+
+(defn extract-and-render [params files]
+  (map (fn [file]
+         (when (markdown-extension? file)
+           (build-file! params file))
+         files)))
+
+(defn- filter-out-draft-markdown [built-files]
+  (filter (fn [built-file]
+            (and (= :markdown (:type built-file))
+                 built-file
+                 (re-matches ALL_MARKDOWN_FILES_EXCEPT_DRAFTS (:base (file-utils/parse-path (:file built-file)))))) built-files))
 
 (defn build!
   "Builds a static web site based on the content specified in specs. Each build-desc should be a mapping of paths, with additional
@@ -115,21 +130,19 @@
     * `:to-format`   - Literal format to use for export!
     * `:to-format-fn` - Function of input filename to format
     * `export-rss?` - export RSS feed (default: true)
-    * `:as-assets?` - Pass through as a static assets (for images, css, json or edn data, etc)
-      - Note: by default, images, css, etc will pass through anyway
   Additional options pertinent to the entire build process may be passed in:
     * `:lazy?` - If true, don't build anything until it changes; this is best for interactive/incremental updates and focused work.
                  Set to false if you want to rebuild from scratch. (default true)
     * `:root-dir` - Static assets will be served relative to this directory (defaults to greatest-common-path between all paths)
   "
   [params]
-  (let [{:keys [from] :as params} (merge {:dest-path-fn html-extension} params)
-        files (file-seq (io/file from))
-        markdowns (map (fn [file] ) files)]
-    (build-dir! params from)
-    (doseq [src-file files]
-      (build-file! params src-file))))
-
+  (let [{:keys [from export-rss?] :as params} (merge {:dest-path-fn html-extension} params)
+        files (file-utils/list-files from)
+        built-files (map (partial build-file! params) files)
+        markdowns (filter-out-draft-markdown built-files)]
+    (when export-rss?
+      (export-rss! params markdowns))
+    (build-dir! params from markdowns)))
 
 (defn ns-last-name [ns]
   (subs (str ns) (inc (clojure.string/last-index-of (str ns) "."))))

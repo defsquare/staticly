@@ -14,9 +14,9 @@
          io.github.nextjournal/markdown {:git/url "https://github.com/defsquare/markdown"
                                          :sha "56e267175c621a9f9c35a633c8d786ccf4fa61e3"}
 
-         instaparse/instaparse {:mvn/version "1.4.10"}
+         instaparse/instaparse {:mvn/version "1.4.12"}
 
-         hickory/hickory                     {:mvn/version "0.7.1"}
+         hickory/hickory                     {:mvn/version "0.7.3"}
          camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.2"}
 
          environ/environ                     {:mvn/version "1.2.0"}

@@ -83,7 +83,7 @@
       [text state])))
 
 (defn process
-  "return a map with two keys `:metadata`, `:html` and `:hiccup` with respectively the meta found in the md file front-matter and the markdown content transformed to hiccup"
+  "return a map with three keys `:metadata`, `:raw-html` and `:hiccup` with respectively the meta found in the md file front-matter and the markdown content transformed to hiccup"
   [md-string]
   ;;IMPORTANT the transformers needs to stay in that order
   (when md-string
@@ -122,7 +122,7 @@
                                                                              common/dashes
                                                                              transformers/clear-line-state])
         (add-hiccup)
-        (assoc :raw md-string))))
+        (assoc :markdown md-string))))
 
 (defn parse-yaml-metadata-headers
   [lines-seq]
