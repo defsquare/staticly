@@ -3,6 +3,17 @@
             [clojure.walk :as walk :refer [postwalk]]
             [hickory.core :as hickory :refer [as-hiccup parse-fragment]]))
 
+(defn paste []
+  (-> (java.awt.Toolkit/getDefaultToolkit)
+      .getSystemClipboard
+      (.getContents nil)
+      (.getTransferData java.awt.datatransfer.DataFlavor/stringFlavor)))
+
+(defn copy [s]
+  (-> (java.awt.Toolkit/getDefaultToolkit)
+      .getSystemClipboard
+      (.setContents (java.awt.datatransfer.StringSelection. s) nil)))
+
 (defn- replace-nil-with-blank [v]
   (map (fn [x] (if x x "")) v))
 
@@ -15,7 +26,13 @@
         (vec (filter remove-empty-form x)))
       (if (and (map? x) (empty? x))
         nil
-        x))))
+        (if (nil? x)
+          nil
+          (if (seq? x)
+            (if (= 2 (count x))
+              (seq (replace-nil-with-blank x))
+              (seq (filter remove-empty-form x)))
+            x))))))
 
 (defn clean-hiccup [hiccup]
   (walk/postwalk remove-empty-form hiccup))
