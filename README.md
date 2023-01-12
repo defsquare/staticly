@@ -197,6 +197,19 @@ npx tailwindcss -i ./src/mywebsite/styles.css -o ./resources/public/css/mywebsit
 
 ```
 
+# Developer Experience with Tailwind CSS and Hiccup
+
+[Tailwind UI](https://tailwindui.com/components) (and [Taildwind Templates](https://tailwindui.com/templates) or various ones - like [Cruip](https://cruip.com) - you can find on the web) provides components with their HTML code you can copy easily in your clipboard.
+To get the Hiccup corresponding to the HTML code you just have to execute the following Clojure code:
+
+``` clojure
+(require '[defsquare.hiccup])
+;;copy the HTML code in your system clipboard
+
+(html->hiccup (paste)) ;;=>  [:div {:class "flex min-h-full flex-col justify-center py-12 sm:px-6 lg:px-8"} [:div ... ]]]
+
+```
+
 # Metadata and front-matter
 
 ## YAML front-matter
