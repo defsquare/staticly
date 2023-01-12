@@ -30,8 +30,8 @@
           nil
           (if (seq? x)
             (if (= 2 (count x))
-              (seq (replace-nil-with-blank x))
-              (seq (filter remove-empty-form x)))
+              (vec (replace-nil-with-blank x))
+              (vec (filter remove-empty-form x)))
             x))))))
 
 (defn clean-hiccup [hiccup]
