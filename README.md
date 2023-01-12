@@ -203,14 +203,15 @@ npx tailwindcss -i ./src/mywebsite/styles.css -o ./resources/public/css/mywebsit
 To get the Hiccup corresponding to the HTML code you just have to execute the following Clojure code:
 
 ``` clojure
-(require '[defsquare.hiccup])
+(require '[defsquare.hiccup :refer :all])
 ;;copy the HTML code in your system clipboard
 
 (html->hiccup (paste)) ;;=>  [:div {:class "flex min-h-full flex-col justify-center py-12 sm:px-6 lg:px-8"} [:div ... ]]]
 
 ;or you can just convert your clipboard by doing this
-(-> paste
-    htlm->hiccup
+(-> (paste)
+    html->hiccup
+    str
     copy)
 
 ```
