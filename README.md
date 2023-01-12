@@ -208,6 +208,11 @@ To get the Hiccup corresponding to the HTML code you just have to execute the fo
 
 (html->hiccup (paste)) ;;=>  [:div {:class "flex min-h-full flex-col justify-center py-12 sm:px-6 lg:px-8"} [:div ... ]]]
 
+;or you can just convert your clipboard by doing this
+(-> paste
+    htlm->hiccup
+    copy)
+
 ```
 
 # Metadata and front-matter
