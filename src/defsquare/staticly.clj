@@ -3,6 +3,7 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
 
+            [environ.core :as environ]
             [hiccup.core :as hiccup]
 
             [defsquare.hiccup :as dh]
@@ -10,7 +11,8 @@
             [defsquare.file-utils :as file-utils :refer [canonical-path relative-path strip-path-seps join-paths drop-extension html-extension extension file-separator ensure-out-dir]]
             [defsquare.rss :refer [export-rss!]]
             [defsquare.watcher :as watcher :refer [start-watcher!]]
-            [defsquare.safari :as safari :refer [reload-safari-tab!]])
+            [defsquare.safari :as safari :refer [reload-safari-tab!]]
+            [defsquare.staticly :as staticly])
   (:import [java.io File]))
 
 (def rendered-filetypes #{"md" "mds" "clj" "cljc" "cljs" "yaml" "json" "edn"})
@@ -150,6 +152,13 @@
 (defn ns-first-name [ns]
   (subs (str ns) 0 (.indexOf (str ns) ".")))
 
+(defn execution-context []
+  {:project-name (ns-first-name *ns*)
+   :doc-name     (ns-last-name *ns*)})
+
+(defn reload-word []
+  (:project-name (execution-context)))
+
 (def BUILD_FN_NAME "build!")
 (def EXPORT_FN_NAME "export!")
 (def PUBLIC_DIR "resources/public/")
@@ -162,12 +171,25 @@
           (println "Export html to" filename#)
           (spit filename# (hiccup/html hiccup#)))))
 
-(defmacro emit-build [reload-word render-fn]
-  `(defn ~(symbol BUILD_FN_NAME) []
-     ;;invoke export
-     (~(symbol EXPORT_FN_NAME) (~(symbol (str *ns*) render-fn)))
-     (when (not= "CLOUDFLARE" (environ.core/env :build-context))
-       (safari/reload-safari-tab! ~reload-word))))
+(def build-fns (atom []))
+(defn register-build-function! [build-fn-var]
+  (swap! build-fns conj build-fn-var))
+
+(def CI_ENVIRONMENT_BUILD_CONTEXT "CLOUDFLARE")
+
+(defn developer-environment? []
+  (not= CI_ENVIRONMENT_BUILD_CONTEXT (environ.core/env :build-context)))
+
+(defn reload-browser! []
+  (when (developer-environment?)
+    (safari/reload-safari-tab! (reload-word))))
+
+(defmacro emit-build [render-fn]
+  `(do (defn ~(symbol BUILD_FN_NAME) []
+         ;;invoke export
+         (~(symbol EXPORT_FN_NAME) (~(symbol (str *ns*) render-fn)))
+         (staticly/reload-browser!))
+       (staticly/register-build-function! (var ~(symbol BUILD_FN_NAME)))))
 
 (defmacro emit-main [render-fn]
   `(defn ~(symbol "-main") [& args#]
@@ -175,12 +197,9 @@
      (shutdown-agents)))
 
 (defmacro emit-dev-build []
-  `(when (not= "CLOUDFLARE" (environ.core/env :build-context))
+  `(when (staticly/developer-environment?)
      (~(symbol (str *ns*) BUILD_FN_NAME))))
 
-(defn execution-context []
-  {:project-name (ns-first-name *ns*)
-   :doc-name     (ns-last-name *ns*)})
 
 (defmacro def-render-builder
   ([]
@@ -188,23 +207,22 @@
          export-dir                      PUBLIC_DIR
          export-file                     (str export-dir doc-name ".html")]
      `(def-render-builder {:to          ~export-file
-                   :render-fn   "render"
-                   :reload-word ~project-name})))
-  ([{:keys [to render-fn reload-word] :as params}]
+                           :render-fn   "render"})))
+  ([{:keys [to render-fn] :as params}]
    `(do
       (require 'environ.core)
       (println (format "Def Staticly builder: rendering function \"%s\" exporting HTML to %s" ~render-fn ~to))
       (emit-export ~to)
-      (emit-build ~reload-word ~render-fn)
+      (emit-build ~render-fn)
       (emit-main ~render-fn)
       (emit-dev-build)
       nil)))
 
 (defmacro emit-md-build [params]
-  `(defn ~(symbol BUILD_FN_NAME) []
-     (staticly/build! ~params)
-     (when (not= "CLOUDFLARE" (environ.core/env :build-context))
-       (safari/reload-safari-tab! (:reload-word ~params)))))
+  `(do (defn ~(symbol BUILD_FN_NAME) []
+         (staticly/build! ~params)
+         (staticly/reload-browser!))
+       (staticly/register-build-function! (var ~(symbol BUILD_FN_NAME)))))
 
 (defn assert-symbol-present?
   "Check if the symbol is present in the ns it is invoked in"
@@ -232,28 +250,36 @@
         (require 'environ.core)
         (println (format "Define Staticly Blog builder: markdowns in %s dir rendered using single-template %s and aggregate-template %s exported to %s" (:from params#) (:single-templates params#) (:aggregate-templates params#) (:to params#)))
         (emit-md-build params#)
-        (when (not= "CLOUDFLARE" (environ.core/env :build-context))
+        (when (staticly/developer-environment?)
           (~(symbol (str *ns*) BUILD_FN_NAME))
           (watcher/start-watcher! (:from params#) ~(symbol (str *ns*) BUILD_FN_NAME)))))))
 
 (defmacro emit-page-build [params]
-  `(defn ~(symbol BUILD_FN_NAME) []
-     (staticly/build! ~params)
-     (when (not= "CLOUDFLARE" (environ.core/env :build-context))
-       (safari/reload-safari-tab! ~(:reload-word params)))))
+  `(do (defn ~(symbol BUILD_FN_NAME) []
+         (staticly/build! ~params)
+         (staticly/reload-browser!))
+       (staticly/register-build-function! (var ~(symbol BUILD_FN_NAME)))))
 
 (defmacro def-page-builder
   ([]
-   (let [{:keys [project-name doc-name]} (execution-context)]
+   (let [{:keys [doc-name]} (execution-context)]
      `(def-page-builder {:from                ~doc-name
                          :to                  ~PUBLIC_DIR
-                         :single-templates    {(str "^.*" ~doc-name "/.*\\.md$") ~(symbol "page-template")}
-                         :reload-word          ~project-name})))
+                         :single-templates    {(str "^.*" ~doc-name "/.*\\.md$") ~(symbol "page-template")}})))
   ([{:keys [from to single-templates] :as params}]
    `(do
       (require 'environ.core)
       (println (format "Define Staticly builder for %s: rendering markdowns in \"%s\" dir using single-templates mapping %s exported to dir \"%s\"" ~(str *ns*) ~from ~single-templates ~to))
       (emit-page-build ~params)
-      (when (not= "CLOUDFLARE" (environ.core/env :build-context))
+      (when (staticly/developer-environment?)
         (~(symbol (str *ns*) BUILD_FN_NAME))
         (watcher/start-watcher! ~from ~(symbol (str *ns*) BUILD_FN_NAME))))))
+
+(defn watch-build-and-reload! []
+  (letfn [(rebuild-and-reload! []
+            (println "Rebuild and Reload!")
+            (doseq [build!-fn @build-fns]
+              (build!-fn))
+            (reload-browser!))]
+    (watcher/start-watcher! (file-utils/parent *file*) rebuild-and-reload!)
+    (rebuild-and-reload!)))

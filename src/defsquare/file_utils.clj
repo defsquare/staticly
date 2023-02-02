@@ -266,3 +266,50 @@
       (let [file (io/file path)]
         (when-not (.isDirectory file)
           (.mkdir file))))))
+
+(defn ns-to-source-file
+  "Converts the namespace object to a source (.clj) file path."
+  [ns]
+  (when-let [name (try (-> ns ns-name str) (catch Exception e))]
+    (let [tokens (.split name "\\.")]
+      (str (apply str (interpose File/separator (map munge tokens))) ".clj"))))
+
+(defn find-uncle-file
+  "Finds an ancestor directory of file f containing a file uncle."
+  [f uncle]
+  (let [f (if (string? f) (File. f) f)
+        uncle (if (string? uncle) uncle (.getPath uncle))
+        d0 (if (.isDirectory f) f (.getParentFile f))]
+    (loop [dir d0]
+      (when dir
+        (if (.exists (File. dir uncle))
+          (.getAbsolutePath dir)
+          (recur (.getParentFile dir)))))))
+
+(defn find-resource
+  [file]
+  (loop [cl (.. Thread currentThread getContextClassLoader)]
+    (when cl
+      (println "cl" cl)
+      (if-let [url (.findResource cl file)]
+        url
+        (recur (.getParent cl))))))
+
+(defn project-dir
+  "Returns the absolute file path of the parent of the src directory
+   enclosing the current source file (or namespace's) package dirs.
+   If running from a jar, returns the enclosing directory."
+  ([file]
+    (when-let [url (find-resource file)]
+      (let [stub (.replace (.getFile url) file "")]
+        (->
+          (if (.endsWith stub ".jar!/")
+            (.substring stub 5 (- (.length stub) 2))
+            stub)
+          File. .getParentFile .getAbsolutePath))))
+  ([]
+    (or (project-dir *file*)
+        (project-dir (ns-to-source-file *ns*))
+        (find-uncle-file (File. ".") "project.clj")
+        (find-uncle-file (File. ".") "deps.edn"))))
+
