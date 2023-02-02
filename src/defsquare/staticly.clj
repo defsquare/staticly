@@ -252,7 +252,7 @@
         (emit-md-build params#)
         (when (staticly/developer-environment?)
           (~(symbol (str *ns*) BUILD_FN_NAME))
-          (watcher/start-watcher! (:from params#) ~(symbol (str *ns*) BUILD_FN_NAME)))))))
+          (watcher/start-watcher! ~(defsquare.file-utils/parent *file*) ~(symbol (str *ns*) BUILD_FN_NAME)))))))
 
 (defmacro emit-page-build [params]
   `(do (defn ~(symbol BUILD_FN_NAME) []
@@ -273,7 +273,7 @@
       (emit-page-build ~params)
       (when (staticly/developer-environment?)
         (~(symbol (str *ns*) BUILD_FN_NAME))
-        (watcher/start-watcher! ~from ~(symbol (str *ns*) BUILD_FN_NAME))))))
+        (watcher/start-watcher! ~(defsquare.file-utils/parent *file*) ~(symbol (str *ns*) BUILD_FN_NAME))))))
 
 (defn watch-build-and-reload! []
   (letfn [(rebuild-and-reload! []
@@ -281,5 +281,6 @@
             (doseq [build!-fn @build-fns]
               (build!-fn))
             (reload-browser!))]
-    (watcher/start-watcher! (file-utils/parent *file*) rebuild-and-reload!)
-    (rebuild-and-reload!)))
+    (when (developer-environment?)
+      (watcher/start-watcher! (defsquare.file-utils/parent *file*) rebuild-and-reload!)
+      (rebuild-and-reload!))))

@@ -6,7 +6,7 @@
 
 (defn start-watcher! [dir build-fn]
   (println (format "Start file watcher of files in dir %s" (str dir)))
-  (println (type dir) (str dir) (Paths/get (str dir) (into-array String [])))
+  ;(println (type dir) (str dir) (Paths/get (str dir) (into-array String [])))
   (if (not (@watcher-state (str dir)))
     (let [path      (Paths/get (str dir) (into-array String []))
           watch-svc (.newWatchService (FileSystems/getDefault))]
@@ -19,5 +19,5 @@
               (build-fn))
             (.reset key))))
       (swap! watcher-state conj (str dir))
-      (println "Watcher thread started for dir " (str dir)))
-    (println "Watcher thread already started for dir " (str dir))))
+      (println "Watcher thread started for dir" (str dir)))
+    (println "Watcher thread already started for dir" (str dir))))
