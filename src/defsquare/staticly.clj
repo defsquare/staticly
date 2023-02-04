@@ -281,7 +281,7 @@
         ;;watch the clj file
         (watcher/start-watcher! ~*file* ~(symbol (str *ns*) BUILD_FN_NAME))
         ;;watch the folder where sits the markdown files
-        (watcher/start-watcher! ~(from) ~(symbol (str *ns*) BUILD_FN_NAME))))))
+        (watcher/start-watcher! ~from ~(symbol (str *ns*) BUILD_FN_NAME))))))
 
 (defn rebuild-and-reload! []
   (println "Rebuild and Reload!")
