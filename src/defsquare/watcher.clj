@@ -30,7 +30,7 @@
                 (println (format "File %s changed, execute function" (.toString (.context event))) )
                 (build-fn))
               (.reset key))))
-        (swap! watcher-state conj (str dir))
+        (swap! watcher-dir-state conj (str dir))
         (println "Watcher thread started for dir" (str dir)))
       (println "Watcher thread already started for dir" (str dir)))))
 
