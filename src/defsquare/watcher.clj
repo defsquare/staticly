@@ -4,35 +4,52 @@
             [defsquare.file-utils :as file-utils])
   (:import [java.nio.file Paths FileSystems WatchEvent$Kind StandardWatchEventKinds]))
 
-(def watcher-dir-state (atom #{}));this atom contains a set that contains the dirs with a watcher started
-(def watcher-file-state (atom #{}));this atom contains a set that contains the files with a watcher started
+(defonce watcher-dir-state (atom #{}));this atom contains a set that contains the dirs with a watcher started
+(defonce watcher-file-state (atom #{}));this atom contains a set that contains the files with a watcher started
 
-(defn watcher-started? [dir]
-  )
+(defn watcher-for-dir-started? [dir-path]
+  (@watcher-dir-state (str dir-path)))
 
-(defn start-watcher! [dir build-fn]
-  (let [[dir file] (when (.isFile (io/file dir)) [(file-utils/parent dir) dir])]
-    (if file
-        (println (format "Start file watcher for file %s" (str file)))
-        (println (format "Start file watcher of files in dir %s" (str dir))))
-    (if (not (@watcher-dir-state (str dir)))
-      (let [dir-path  (Paths/get (str dir) (into-array String []))
-            file-path (when file (Paths/get (str file) (into-array String [])))
-            watch-svc (.newWatchService (FileSystems/getDefault))]
-        (.register dir-path watch-svc (into-array WatchEvent$Kind [StandardWatchEventKinds/ENTRY_MODIFY]))
+(defn watcher-for-file-started? [file-path]
+  (@watcher-file-state (str file-path)))
+
+(defn- start-watch-service [dir-path file-path watcher-for-dir? watcher-for-file? fn-to-execute]
+  (let [watch-svc (.newWatchService (FileSystems/getDefault))]
+        (.register dir-path watch-svc (into-array WatchEvent$Kind [StandardWatchEventKinds/ENTRY_MODIFY StandardWatchEventKinds/ENTRY_CREATE]))
         (async/go
           (while true
             (let [key (.take watch-svc)]
               (doseq [event (.pollEvents key)]
-                (let [path-changed (.context event)]
-                 ; (if (.endsWith ))
-                  )
-                (println (format "File %s changed, execute function" (.toString (.context event))) )
-                (build-fn))
-              (.reset key))))
-        (swap! watcher-dir-state conj (str dir))
-        (println "Watcher thread started for dir" (str dir)))
-      (println "Watcher thread already started for dir" (str dir)))))
+                (let [path-changed (.context event)
+                      absolute-path-changed (.toAbsolutePath (Paths/get (str dir-path) (into-array String [(str path-changed)])))]
+                  (println "path changed" (str absolute-path-changed) (str file-path) watcher-for-file? watcher-for-dir?)
+                  (when (and watcher-for-file? (.endsWith (str absolute-path-changed) (str file-path)))
+                    (println (format "File %s in dir %s changed, execute function" file-path (.toString (.context event))) )
+                    (fn-to-execute)))
+                  (when watcher-for-dir?
+                    (println (format "Dir \"%s\": File %s changed, execute function" dir-path (.toString (.context event))) )
+                    (fn-to-execute))
+                  (.reset key)))))
+        watch-svc))
+
+(defn start-watcher! [dir fn-to-execute]
+  (let [watcher-for-file? (.isFile (io/file dir))
+        watcher-for-dir?  (not watcher-for-file?)
+        [dir file] (if watcher-for-file? [(file-utils/parent dir) dir] [dir nil])
+        dir-path (Paths/get (str dir) (into-array String []))
+        file-path (when file (Paths/get (str file) (into-array String [])))]
+    (if watcher-for-file?
+        (println (format "Start file watcher for file %s" (str file)))
+        (println (format "Start file watcher of files in dir \"%s\"" (str dir))))
+    (if (not (or (watcher-for-dir-started? dir-path)
+                 (watcher-for-file-started? file-path)))
+      (do
+        (let [watcher (start-watch-service dir-path file-path watcher-for-dir? watcher-for-file? fn-to-execute)]
+          (println "Watcher thread started for dir" (str dir-path))
+          (swap! watcher-dir-state conj (str dir-path))
+          (swap! watcher-file-state conj (str file-path))
+          watcher))
+      (println "Watcher thread already started for" (if watcher-for-file? (format "file %s" (str file-path)) (format "dir %s" (str dir-path)))))))
 
 (comment
   (defn watch-service [path-str]

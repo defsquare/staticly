@@ -6,7 +6,6 @@
             [environ.core :as environ]
             [hiccup.core :as hiccup]
 
-            [defsquare.hiccup :as dh]
             [defsquare.markdown :as md]
             [defsquare.file-utils :as file-utils :refer [canonical-path relative-path strip-path-seps join-paths drop-extension html-extension extension file-separator ensure-out-dir]]
             [defsquare.rss :refer [export-rss!]]
@@ -44,7 +43,7 @@
 
 (defmulti build-file! (fn [_ file]
                         (let [ext (file-utils/extension (.getPath file))]
-                          (println "build-file! %s with extension %s" file ext)
+                          (println (format "build-file! %s with extension %s" (str file) ext))
                           (cond
                             (copied-filetypes ext)   :copied
                             (rendered-filetypes ext) :rendered))))
@@ -140,17 +139,25 @@
   [params]
   (let [{:keys [from export-rss?] :as params} (merge {:dest-path-fn html-extension} params)
         files (file-utils/list-files from)
-        built-files (map (partial build-file! params) files)
+        built-files (doall (map (partial build-file! params) files))
         markdowns (filter-out-draft-markdown built-files)]
     (when export-rss?
       (export-rss! params markdowns))
     (build-dir! params from markdowns)))
 
 (defn ns-last-name [ns]
-  (subs (str ns) (inc (clojure.string/last-index-of (str ns) "."))))
+  (let [ns-str       (str ns)
+        index-of-dot (.indexOf ns-str ".")]
+    (if (> index-of-dot -1)
+      (subs ns-str (inc (clojure.string/last-index-of ns-str ".")))
+      ns-str)))
 
 (defn ns-first-name [ns]
-  (subs (str ns) 0 (.indexOf (str ns) ".")))
+  (let [ns-str (str ns)
+        index-of-dot (.indexOf ns-str ".")]
+    (if (> index-of-dot -1)
+      (subs ns-str 0 index-of-dot)
+      ns-str)))
 
 (defn execution-context []
   {:project-name (ns-first-name *ns*)
@@ -200,6 +207,11 @@
   `(when (staticly/developer-environment?)
      (~(symbol (str *ns*) BUILD_FN_NAME))))
 
+(defmacro current-file []
+  `(-> (clojure.java.io/resource *file*)
+       .toURI
+       (java.nio.file.Paths/get)
+       .toString))
 
 (defmacro def-render-builder
   ([]
@@ -217,7 +229,13 @@
       (emit-main ~render-fn)
       (emit-dev-build)
       ;watch the clj file
-      (watcher/start-watcher! ~*file* ~(symbol (str *ns*) BUILD_FN_NAME))
+      ;(println defsquare.file-utils/*cwd* ~*file* *compile-path* *source-path*)
+      ;(println ~(current-file))
+      #_(println ~(-> (clojure.java.io/resource *file*)
+                    .toURI
+                    (java.nio.file.Paths/get)
+                    ))
+      (watcher/start-watcher! ~(current-file) ~(symbol (str *ns*) BUILD_FN_NAME))
       nil)))
 
 (defmacro emit-md-build [params]
@@ -255,9 +273,11 @@
         (when (staticly/developer-environment?)
           (~(symbol (str *ns*) BUILD_FN_NAME))
           ;watch the clj file
-          (watcher/start-watcher! ~*file* ~(symbol (str *ns*) BUILD_FN_NAME))
+          (watcher/start-watcher! ~(current-file) ~(symbol (str *ns*) BUILD_FN_NAME))
           ;;watch the 'blog' folder md files
-          (watcher/start-watcher! ~(str (defsquare.file-utils/parent *file*)) ~(symbol (str *ns*) BUILD_FN_NAME)))))))
+          (println (:from params#))
+        ;  (watcher/start-watcher! (:from params#) ~(symbol (str *ns*) BUILD_FN_NAME))
+          )))))
 
 (defmacro emit-page-build [params]
   `(do (defn ~(symbol BUILD_FN_NAME) []
@@ -279,7 +299,7 @@
       (when (staticly/developer-environment?)
         (~(symbol (str *ns*) BUILD_FN_NAME))
         ;;watch the clj file
-        (watcher/start-watcher! ~*file* ~(symbol (str *ns*) BUILD_FN_NAME))
+        (watcher/start-watcher! ~(current-file) ~(symbol (str *ns*) BUILD_FN_NAME))
         ;;watch the folder where sits the markdown files
         (watcher/start-watcher! ~from ~(symbol (str *ns*) BUILD_FN_NAME))))))
 
@@ -293,5 +313,6 @@
   (when (developer-environment?)
     `(do
       ;;watch the file where this macro is invoked
-      (watcher/start-watcher! ~*file* rebuild-and-reload!)
+      (watcher/start-watcher! ~(current-file) rebuild-and-reload!)
       (rebuild-and-reload!))))
+
