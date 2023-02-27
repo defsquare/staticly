@@ -208,7 +208,7 @@
      (~(symbol (str *ns*) BUILD_FN_NAME))))
 
 (defmacro current-file []
-  `(-> (clojure.java.io/resource *file*)
+  `(-> (or (clojure.java.io/resource *file*) (clojure.java.io/file *file*))
        .toURI
        (java.nio.file.Paths/get)
        .toString))
