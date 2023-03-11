@@ -14,3 +14,10 @@
       end repeat
    end repeat
 end tell ")))
+
+(defn open! [url]
+  (println (str "Open \"" url "\" in Safari"))
+  (shell/sh "osascript" :in (str " tell application \"Safari\"
+        activate
+        open location \""url"\"
+    end tell")))
