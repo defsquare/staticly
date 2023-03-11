@@ -22,7 +22,7 @@
               (doseq [event (.pollEvents key)]
                 (let [path-changed (.context event)
                       absolute-path-changed (.toAbsolutePath (Paths/get (str dir-path) (into-array String [(str path-changed)])))]
-                  (println "path changed" (str absolute-path-changed) (str file-path) watcher-for-file? watcher-for-dir?)
+                  ;(println "path changed" (str absolute-path-changed) (str file-path) watcher-for-file? watcher-for-dir?)
                   (when (and watcher-for-file? (.endsWith (str absolute-path-changed) (str file-path)))
                     (println (format "File %s in dir %s changed, execute function" file-path (.toString (.context event))) )
                     (fn-to-execute)))
@@ -45,9 +45,10 @@
                  (watcher-for-file-started? file-path)))
       (do
         (let [watcher (start-watch-service dir-path file-path watcher-for-dir? watcher-for-file? fn-to-execute)]
-          (println "Watcher thread started for dir" (str dir-path))
-          (swap! watcher-dir-state conj (str dir-path))
-          (swap! watcher-file-state conj (str file-path))
+          (println "Watcher thread started for" (if watcher-for-file? (format "file %s" (str file-path)) (format "dir %s" (str dir-path))))
+          (if watcher-for-file?
+            (swap! watcher-file-state conj (str file-path))
+            (swap! watcher-dir-state conj (str dir-path)))
           watcher))
       (println "Watcher thread already started for" (if watcher-for-file? (format "file %s" (str file-path)) (format "dir %s" (str dir-path)))))))
 
