@@ -214,6 +214,15 @@ To get the Hiccup corresponding to the HTML code you just have to execute the fo
     str
     copy)
 
+;;here is the fully qualified version to avoid any require
+(->
+  (defsquare.clipboard/paste);;paste the system clipboard into a string
+  (defsquare.hiccup/html->hiccup);;transform that string into Hiccup data structure 
+  (clojure.pprint/pprint);;align and wrap the result
+  (with-out-str);;into a string
+  (defsquare.clipboard/copy);;copy back the string with hiccup into the system clipboard
+  )
+
 ```
 
 # Metadata and front-matter
