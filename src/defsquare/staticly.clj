@@ -63,9 +63,7 @@
 (defmethod build-file! :rendered [{:keys [from to] :as params} file]
   (println (format "Build/render file %s" file))
   (let [template       (determine-template params file)
-        markdown       (-> file
-                           slurp
-                           md/process)
+        markdown       (md/process-file file)
         templated-html (-> markdown
                            template
                            hiccup/html)]
@@ -95,9 +93,9 @@
   ;;list markdowns file except the ones starting with DRAFT.
   (let [all-markdowns-with-meta (md/list-markdowns-with-meta src-dir ALL_MARKDOWN_FILES_EXCEPT_DRAFTS)]
     (when export-rss?
-      (export-rss! params all-markdowns-with-meta))
+      (export-rss! params markdowns))
     (when aggregate-templates
-      (doseq [{:keys [template-fn file-name]} aggregate-templates]
+      (doseq [{:keys [template-fn file-name] :as template} aggregate-templates]
         (let [content   (template-fn all-markdowns-with-meta)
               dest-file (str to (file-separator) file-name)]
           (println "all-markdowns-with-meta" dest-file template-fn src-dir all-markdowns-with-meta)
@@ -122,27 +120,23 @@
   "Builds a static web site based on the content specified in specs. Each build-desc should be a mapping of paths, with additional
   details about how to build data from one path to the other. Available build params keys are:
     * `:from`        - (required) Path from which to build
-    * `:to`          - (required) Compiled files go here
+    * `:to`          - (required) Built files go here (either rendered with a template or copied for assets)
     * `:single-templates` - Map of Regex that match the file path to template as Function which takes :hiccup and :metadata and returns some new hiccup, presumably placing the content in question in some place
     * `:aggregate-templates` - vector of templates as function wich takes the return of `all-markdowns-with-meta`
-
+    * `:templates`
+       * `:one-md-one-file`
+       * `:one-md-mult-files`
+       * `:mult-mds-one-file`
+       * `:mult-mds-mult-files`
     * `:out-path-fn` - Function used for naming compilation output
-    * `:baseurl` - website will be served from this base URL
-    * `:to-format`   - Literal format to use for export!
-    * `:to-format-fn` - Function of input filename to format
-    * `export-rss?` - export RSS feed (default: true)
-  Additional options pertinent to the entire build process may be passed in:
-    * `:lazy?` - If true, don't build anything until it changes; this is best for interactive/incremental updates and focused work.
-                 Set to false if you want to rebuild from scratch. (default true)
-    * `:root-dir` - Static assets will be served relative to this directory (defaults to greatest-common-path between all paths)
-  "
+    * `:baseurl` - website is served from this base URL
+    * `:export-rss?` - export RSS feed (default: true) "
   [params]
   (let [{:keys [from export-rss?] :as params} (merge {:dest-path-fn html-extension} params)
         files (file-utils/list-files from)
         built-files (doall (map (partial build-file! params) files))
         markdowns (filter-out-draft-markdown built-files)]
-    (when export-rss?
-      (export-rss! params markdowns))
+    ;(when export-rss? (export-rss! params markdowns))
     (build-dir! params from markdowns)))
 
 (defn ns-last-name [ns]
@@ -229,12 +223,6 @@
       (emit-main ~render-fn)
       (emit-dev-build)
       ;watch the clj file
-      ;(println defsquare.file-utils/*cwd* ~*file* *compile-path* *source-path*)
-      ;(println ~(current-file))
-      #_(println ~(-> (clojure.java.io/resource *file*)
-                    .toURI
-                    (java.nio.file.Paths/get)
-                    ))
       (watcher/start-watcher! ~(current-file) ~(symbol (str *ns*) BUILD_FN_NAME))
       nil)))
 
@@ -257,7 +245,8 @@
     `{:from                ~doc-name
       :to                  (str PUBLIC_DIR ~doc-name)
       :single-templates    {(str "^.*" ~doc-name "/.*\\.md$") ~(symbol "post-template")}
-      :aggregate-templates [{:template-fn ~(symbol "home-template") :file-name "index.html"} {:template-fn ~(symbol "tag-template") :file-name "tags.html"}]
+      :aggregate-templates [{:template-fn ~(symbol "home-template") :file-name "index.html"}
+                            {:template-fn ~(symbol "tag-template")  :file-name "tags.html"}]
       :export-rss?         true
       :reload-word         ~project-name}))
 
@@ -275,8 +264,8 @@
           ;watch the clj file
           (watcher/start-watcher! ~(current-file) ~(symbol (str *ns*) BUILD_FN_NAME))
           ;;watch the 'blog' folder md files
-          (println (:from params#))
-        ;  (watcher/start-watcher! (:from params#) ~(symbol (str *ns*) BUILD_FN_NAME))
+          ;(println (:from params#))
+          (watcher/start-watcher! (:from params#) ~(symbol (str *ns*) BUILD_FN_NAME))
           )))))
 
 (defmacro emit-page-build [params]
@@ -316,3 +305,42 @@
       (watcher/start-watcher! ~(current-file) rebuild-and-reload!)
       (rebuild-and-reload!))))
 
+(defn index-by-values
+  "return a map with keys as the values found from applying f to element of coll (must return a coll) and the values a seq of all the element with that value"
+  [coll f]
+  (reduce (fn [aggreg e]
+            (reduce (fn [aggreg v]
+                      (if (contains? aggreg v)
+                        (assoc aggreg v (conj (get aggreg v) e))
+                        (assoc aggreg v [e]))) aggreg (f e))) {} coll))
+
+(defn index-by
+  "return a map with keys as the value found from applying f to element of coll (must return a value acceptable as key) and the value a seq of all the element with that value"
+  [coll f]
+  (reduce (fn [aggreg e]
+            (let [v (f e)]
+              (if (contains? aggreg v)
+                (assoc aggreg v (conj (get aggreg v) e))
+                (assoc aggreg v [e])))) {} coll))
+
+(comment
+  (index-by-tags [{:k1 1 :tags [:a :b]} {:k1 2 :tags [:a :b :c]}] :tags)
+  (index-by [{:k 1 :author "j"} {:k 2 :author "j"} {:k 3 :author "d"}] :author))
+
+(defn aggregate-by-tags
+  "extract each tags of every markdown metadata and return a map with tag as key and value a vector of markdown (metadata + raw + hiccup)"
+  [markdowns]
+  (index-by-values markdowns #(get-in % [:metadata :tags])))
+
+(comment
+  (let [files       (file-utils/list-files "blog")
+        files       (md/list-markdowns-with-meta "blog")
+        built-files (doall (map (partial build-file! params) files))])
+  ;(index-by-values (md/list-markdowns-with-meta "blog") :tags)
+  {:from                ~doc-name
+   :to                  (str PUBLIC_DIR ~doc-name)
+   :single-templates    {(str "^.*" ~doc-name "/.*\\.md$") ~(symbol "post-template")}
+   :aggregate-templates [{:template-fn ~(symbol "home-template") :file-name "index.html"}
+                         {:template-fn ~(symbol "tag-template") :file-name "tags.html"}]
+   :export-rss?         true
+   :reload-word         ~project-name})
