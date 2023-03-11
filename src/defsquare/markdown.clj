@@ -82,47 +82,57 @@
       [heading (assoc state :inline-heading true)]
       [text state])))
 
+
 (defn process
   "return a map with three keys `:metadata`, `:raw` and `:hiccup` with respectively the meta found in the md file front-matter, the markdown content and the markdown content transformed to hiccup"
-  [md-string]
+  [^java.lang.String s]
   ;;IMPORTANT the transformers needs to stay in that order
-  (when md-string
-    (-> (md/md-to-html-string-with-meta md-string :replacement-transformers [transformers/set-line-state
-                                                                             transformers/empty-line
-                                                                             common/inhibit
-                                                                             common/escape-inhibit-separator
-                                                                             transformers/code
-                                                                             transformers/codeblock
-                                                                             common/escaped-chars
-                                                                             common/inline-code
-                                                                             transformers/autoemail-transformer
-                                                                             transformers/autourl-transformer
-                                                                             links/image
-                                                                             links/image-reference-link
-                                                                             links/link
-                                                                             links/implicit-reference-link
-                                                                             links/reference-link
-                                                                             links/footnote-link
-                                                                             transformers/hr
-                                                                             transformers/blockquote-1
-                                                                             lists/li
-                                                                             heading-with-id;this is a custom transformers to include anchor with id from the title (uuid in original code, should make a PR...)
-                                                                             transformers/blockquote-2
-                                                                             common/italics
-                                                                             common/bold-italic
-                                                                             common/em
-                                                                             common/strong
-                                                                             common/bold
-                                                                             common/strikethrough
-                                                                             transformers/superscript
-                                                                             tables/table
-                                                                             transformers/paragraph
-                                                                             transformers/br
-                                                                             common/thaw-strings
-                                                                             common/dashes
-                                                                             transformers/clear-line-state])
+  (when s
+    (-> (md/md-to-html-string-with-meta s :replacement-transformers [transformers/set-line-state
+                                                                     transformers/empty-line
+                                                                     common/inhibit
+                                                                     common/escape-inhibit-separator
+                                                                     transformers/code
+                                                                     transformers/codeblock
+                                                                     common/escaped-chars
+                                                                     common/inline-code
+                                                                     transformers/autoemail-transformer
+                                                                     transformers/autourl-transformer
+                                                                     links/image
+                                                                     links/image-reference-link
+                                                                     links/link
+                                                                     links/implicit-reference-link
+                                                                     links/reference-link
+                                                                     links/footnote-link
+                                                                     transformers/hr
+                                                                     transformers/blockquote-1
+                                                                     lists/li
+                                                                     heading-with-id;this is a custom transformers to include anchor with id from the title (uuid in original code, should make a PR...)
+                                                                     transformers/blockquote-2
+                                                                     common/italics
+                                                                     common/bold-italic
+                                                                     common/em
+                                                                     common/strong
+                                                                     common/bold
+                                                                     common/strikethrough
+                                                                     transformers/superscript
+                                                                     tables/table
+                                                                     transformers/paragraph
+                                                                     transformers/br
+                                                                     common/thaw-strings
+                                                                     common/dashes
+                                                                     transformers/clear-line-state])
         (add-hiccup)
-        (assoc :raw md-string))))
+        (assoc :raw s))))
+
+(defn process-file [f]
+  (assoc (process (slurp f))
+         :file f
+         :path (file-utils/parse-path f)))
+
+(defn process-dir [dir]
+  (let [files (file-utils/list-files dir file-utils/markdown?)]
+    (map process-file files)))
 
 (defn parse-yaml-metadata-headers
   [lines-seq]
