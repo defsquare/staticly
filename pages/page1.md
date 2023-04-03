@@ -1,9 +1,9 @@
 ---
-title: 'Markdown Test Post 1'
+title: 'page1'
 published-at: '2022-02-17 08:24'
 timestamp: "Mar 16, 2020"
 summary:  "Get out of the manifest jungle and deploy, upgrade and maintain even the most complex deployments with ease."
-authors: ['Jérémie Grodziski']
+author: 'Jérémie Grodziski'
 tags: [clojure, markdown]
 ---
 

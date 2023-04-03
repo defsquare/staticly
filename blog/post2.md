@@ -3,7 +3,7 @@ title: 'Markdown Test Content Post 2'
 published-at: '2022-02-17 08:24'
 timestamp: "Mar 30, 2022"
 summary:  "Pellentesque quis posuere lectus. Nulla vestibulum justo nibh, id ornare ante hendrerit vitae. Duis ut ligula orci. Nullam non tincidunt dolor. Praesent ac orci vitae nulla dictum placerat non sed justo. Duis sed metus nec sem ultricies posuere. Suspendisse id tortor turpis. Morbi sit amet faucibus nisi, quis sodales velit. Phasellus et ornare purus, convallis sodales dui. "
-author: 'Jérémie Grodziski'
+authors: ['Jérémie Grodziski']
 tags: [clojure, markdown]
 ---
 
