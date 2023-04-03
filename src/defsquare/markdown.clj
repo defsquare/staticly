@@ -1,25 +1,23 @@
 (ns defsquare.markdown
   (:require
-   [clojure.string :as str]
-   [clojure.edn :as edn]
-
+   [camel-snake-kebab.core :as csk]
    [clj-yaml.core :as yaml]
+   [clojure.edn :as edn]
+   [clojure.java.io :as io]
+   [clojure.string :as str]
+   [defsquare.file-utils :as file-utils]
+   [hickory.core :as hickory]
    [instaparse.core :as insta]
-
+   [markdown.common :as common ]
    [markdown.core :as md]
    [markdown.links :as links ]
    [markdown.lists :as lists ]
    [markdown.tables :as tables ]
-   [markdown.common :as common ]
    [markdown.transformers :as transformers]
-   [camel-snake-kebab.core :as csk]
-
    [nextjournal.markdown :as next.md]
-   [nextjournal.markdown.transform :as next.md.transform]
-
-   [hickory.core :as hickory]
-   [defsquare.file-utils :as file-utils])
-  (:import [java.text Normalizer]))
+   [nextjournal.markdown.transform :as next.md.transform])
+  (:import
+   [java.text Normalizer]))
 
 
 (defn- add-hiccup [{:keys [html] :as markdown}]
@@ -126,13 +124,19 @@
         (assoc :raw s))))
 
 (defn process-file [f]
-  (assoc (process (slurp f))
+  (assoc (process (slurp (io/as-file f)))
          :file f
          :path (file-utils/parse-path f)))
+
+(defn process-files [dir includes excludes]
+  (let [files (file-utils/list-files dir includes excludes)]
+     (map process-file files)))
 
 (defn process-dir [dir]
   (let [files (file-utils/list-files dir file-utils/markdown?)]
     (map process-file files)))
+
+(defn read [dirs])
 
 (defn parse-yaml-metadata-headers
   [lines-seq]
@@ -207,11 +211,13 @@ key2: value2
 
 # heading 1 ")
 
-
-(defn parse-metadata [file]
-  (assoc (md/parse-metadata file)
-         :file file
-         :path (file-utils/parse-path file)))
+(defn parse-metadata [filename]
+  (let [file (io/as-file filename)]
+    (with-open [rdr (io/reader file)]
+      (assoc {}
+             :metadata (parse-metadata-headers (line-seq rdr))
+             :file file
+             :path (file-utils/parse-path file)))))
 
 (defn list-markdowns-with-meta
   "return a map of path string of every md files in a dir to a map with the front mattter found in each files and :file and :path"
@@ -219,8 +225,11 @@ key2: value2
    (map parse-metadata (file-utils/list-files dir file-utils/markdown?)))
   ([dir re-filename-to-match]
    (let [files (file-utils/list-files dir (partial file-utils/re-match-filename? re-filename-to-match))]
-     ;(println "List markdowns" (map str files))
+     (map parse-metadata files)))
+  ([dir includes excludes]
+   (let [files (file-utils/list-files dir includes excludes)]
      (map parse-metadata files))))
+
 
 ;(all-markdowns-with-meta "blog")
 ;(md/parse-metadata "blog/post1.md")

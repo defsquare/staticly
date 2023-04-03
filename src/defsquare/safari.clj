@@ -1,8 +1,9 @@
 (ns defsquare.safari
-  (:require             [clojure.java.shell :as shell]))
+  (:require [clojure.java.shell :as shell]
+            [clojure.tools.logging :as log]))
 
 (defn reload-safari-tab! [s]
-  (println (str  "Reload Safari tab containing \"" s "\""))
+  (log/log (clojure.tools.logging.impl/jul-factory) 'defsquare.staticly :info nil (str  "Reload Safari tab containing \"" s "\""))
   (shell/sh "osascript" :in (str " tell application \"Safari\"
    set windowList to every window
    repeat with aWindow in windowList
@@ -16,7 +17,7 @@
 end tell ")))
 
 (defn open! [url]
-  (println (str "Open \"" url "\" in Safari"))
+  (log/info (str "Open \"" url "\" in Safari"))
   (shell/sh "osascript" :in (str " tell application \"Safari\"
         activate
         open location \""url"\"
