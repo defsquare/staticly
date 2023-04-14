@@ -9,7 +9,7 @@
 
             [defsquare.markdown :as md]
             [defsquare.file-utils :as file-utils :refer [exists? canonical-path relative-path as-path directory? file? strip-path-seps join-paths drop-extension html-extension extension file-separator ensure-out-dir]]
-            [defsquare.rss :refer [export-rss!]]
+            [defsquare.rss :refer [write-rss!]]
             [defsquare.watcher :as watcher :refer [start-watcher!]]
             [defsquare.safari :as safari :refer [reload-safari-tab!]]
             [defsquare.staticly :as staticly])
@@ -32,7 +32,7 @@
   (zipmap "ąàáäâãåæăćčĉęèéëêĝĥìíïîĵłľńňòóöőôõðøśșšŝťțŭùúüűûñÿýçżźž"
           "aaaaaaaaaccceeeeeghiiiijllnnoooooooossssttuuuuuunyyczzz"))
 
-(defn replace
+(defn string-replace
   "Replaces all instance of match with replacement in s.
   The replacement is literal (i.e. none of its characters are treated
   specially) for all cases above except pattern / string.
@@ -52,37 +52,44 @@
 (defn slug "Transform text into a URL slug." [s]
   (some-> (lower s)
           (str/escape +slug-tr-map+)
-          (replace #"[^\w\s]+" "")
-          (replace #"\s+" "-")))
+          (string-replace #"[^\w\s]+" "")
+          (string-replace #"\s+" "-")))
 
 (defn assert-symbol-present?
   "Check if the symbol as this string is present in the ns it is invoked in, returns the symbol"
-  [s]
-  (let [sym (resolve (symbol s))]
-    (assert sym (format "Symbol %s must be present in ns %s" s *ns*))
-    sym))
+  ([s]
+   (let [sym (resolve (symbol s))]
+     (assert sym (format "Symbol %s must be present in ns %s" s *ns*))
+     sym))
+  ([ns s]
+   (let [sym (resolve (symbol (str ns) s))]
+     (assert sym (format "Symbol %s must be present in ns %s" s (str ns)))
+     sym)))
 
 (defn assert-fn-present?
   "Check if the symbol as this string is present in the ns it is invoked in and it is bind to a function"
-  [s]
-  (let [sym (assert-symbol-present? s)]
-    (assert (fn? (var-get sym)) (format "Symbol %s in ns %s must be binded to a function" s *ns*))
-    sym))
+  ([s]
+   (let [sym (assert-symbol-present? s)]
+     (assert (fn? (var-get sym)) (format "Symbol %s in ns %s must be binded to a function" s *ns*))
+     sym))
+  ([ns s]
+   (let [sym (assert-symbol-present? ns s)]
+     (assert (fn? (var-get sym)) (format "Symbol %s in ns %s must be binded to a function" s ns))
+     sym)))
 
-(defn- dest-path [{:as params :keys [from to dest-path-fn]} path]
-;  (println "dest-path" params path)
+(defn- dest-path
+  "return the destination path for this origin file path"
+  [from to dest-path-fn path]
   (let [out-path-fn (or dest-path-fn drop-extension)
         single-file? (= path from)
-        to-dir? (or (.isDirectory (io/file to))
-                    (= (last (.getPath (io/file path))) (java.io.File/separatorChar)))
+        to-dir? (or (.isDirectory (file-utils/as-file to))
+                    (= (last (.getPath (file-utils/as-file path))) (java.io.File/separatorChar)))
         relative-from-path (if single-file? path (relative-path path from))]
-    ;(println dest-path-fn single-file? to-dir? relative-from-path params path)
     (if (and single-file? (not to-dir?))
-      ;; then we're just translating a single file with an explicit to path
+      ;; then we're just translating a single file with an explicit `to` path
       to
-      ;; then we need to assume that we're exporting to a path which has a directory created for it
-      (let [dest (dest-path-fn relative-from-path)]
-        (join-paths (or to ".") dest)))))
+      ;; then we assume that we're exporting to a path which has a directory created for it
+      (join-paths (or to ".")  (out-path-fn relative-from-path)))))
 
 (defn dest-url [{:as params :keys [from baseurl dest-path-fn]} path]
   (str baseurl "/" (dest-path-fn (if (= path from) path (relative-path path from)))))
@@ -99,9 +106,9 @@
                             (copied-filetypes ext)   :copy
                             (rendered-filetypes ext) :render))))
 
-(defn write-html [params src-file html]
-  (let [dest-file (dest-path params src-file)
-        dest-dir  (dest-path (assoc params :dest-path-fn drop-extension) src-file)
+(defn write-html [{:keys [from to dest-path-fn]} src-file html]
+  (let [dest-file (dest-path from to dest-path-fn src-file)
+        dest-dir  (dest-path from to drop-extension src-file)
         dest-index-html-file (str dest-dir "/index.html")]
     (log/infof "Write HTML to file %s" dest-file)
     (when (and html src-file (not (.isDirectory src-file)))
@@ -126,12 +133,24 @@
     (write-html params file templated-html)
     (assoc markdown :templated-html templated-html :type :markdown :file file)))
 
-(defn copy-asset! [params file]
-  (let [dest-path (dest-path (assoc params :dest-path-fn identity) (.getPath file) )]
+(defn copy-asset! [{:keys [from to]} file]
+  (let [dest-path (dest-path from to identity (.getPath file) )]
     (ensure-out-dir dest-path true)
     (log/infof "Copy file %s to %s" file dest-path)
     (io/copy file (io/file dest-path))
     {:dest-path dest-path :file file :type :asset}))
+
+(defn copy-assets! [{:keys [from to dest-path-fn]}]
+  (log/infof "Copy assets from %s to %s" from to)
+  (reduce (fn [acc dir]
+            (reduce (fn [acc file]
+                      (let [dest-path (dest-path dir to identity (.getPath file))]
+                        (ensure-out-dir dest-path true)
+                        (log/infof "Copy asset file %s to %s" file dest-path)
+                        (io/copy file (io/file dest-path))
+                        (conj acc {:dest-path dest-path :file file :type :asset})))
+                    acc
+                    (file-utils/list-files dir (fn [file] (copied-filetypes (file-utils/extension (.getPath file))) )))) [] from))
 
 (defmethod build-file! :copy [params file]
   (log/infof "Build/copy file %s" file)
@@ -198,7 +217,7 @@
         built-files (doall (map (partial build-file! params) files))
         markdowns (filter-out-draft-markdown built-files)]
     (when export-rss?
-      (export-rss! params markdowns))
+      (write-rss! params markdowns))
     (build-dir! params from markdowns)))
 
 (defn execution-context []
@@ -215,6 +234,7 @@
 (def BUILD_FN_NAME "build!")
 (def EXPORT_FN_NAME "export!")
 (def PUBLIC_DIR "resources/public")
+(def WRITE_DIR "dist")
 
 (defn export! [hiccup filename]
   (log/infof "Export html to %s" filename)
@@ -222,13 +242,6 @@
     (when (file-utils/directory? filename) (file-utils/ensure-out-dir filename))
     (when (file-utils/file? filename)      (file-utils/ensure-out-dir (str (file-utils/as-path (file-utils/parent filename)))))
     (spit to (hiccup/html hiccup))))
-
-(defmacro emit-export! [filename]
-  `(defn ~(symbol EXPORT_FN_NAME)
-     ([hiccup#]
-      (~(symbol EXPORT_FN_NAME) hiccup# ~filename))
-     ([hiccup# filename#]
-      (export! hiccup# filename#))))
 
 (def build-fns (atom []))
 (defn register-build-function! [build-fn-var]
@@ -242,7 +255,6 @@
 (defn reload-browser! []
   (when (developer-environment?)
     (safari/reload-safari-tab! (reload-word))))
-
 
 (defmacro emit-main [params]
   `(defn ~(symbol "-main") [& args#]
@@ -259,24 +271,36 @@
        (java.nio.file.Paths/get)
        .toString))
 
-(defn write-html!
-  ([to docname-to-hiccup]
-   (mapcat (fn [[docname hiccup]] (write-html! to docname hiccup)) docname-to-hiccup))
-  ([to docname hiccup]
-   (let [dest-file            (io/as-file (str to (file-separator) docname ".html"))
+(defn content-type [x]
+  (cond (string? x) :string
+        (vector? x) :hiccup))
+
+(defn render-content-if-needed [x]
+  (when x
+    (case (content-type x)
+      :string x;write the content as is
+      :hiccup (hiccup/html x)
+      x)))
+
+(defn write-content!
+  ([to extension docname-to-content]
+   ;(println "write-content!" to extension docname-to-content)
+   (mapcat (fn [[docname content]] (write-content! to extension docname content)) docname-to-content))
+  ([to extension docname content]
+   (let [dest-file            (io/as-file (str to (file-separator) docname "." extension))
          dest-dir             (str to (file-separator) docname)
-         dest-index-html-file (io/as-file (str dest-dir (file-separator) "index.html"))
-         html                 (when hiccup (hiccup/html hiccup))]
+         dest-index-html-file (io/as-file (str dest-dir (file-separator) "index." extension))
+         final-content        (render-content-if-needed content)]
      (log/infof "Write HTML to file %s" dest-file)
-     (when (and html dest-file)
+     (when (and final-content dest-file)
        (file-utils/ensure-out-dir (str to))
-       (spit dest-file html))
+       (spit dest-file final-content))
      (log/infof "Write HTML as index.html in directory %s" dest-dir )
-     (when (and html dest-dir)
+     (when (and final-content dest-dir)
                                         ;(file-utils/create-dirs! dest-dir)
        (file-utils/ensure-out-dir dest-dir)
        ;(println "spit" dest-dir dest-index-html-file (exists? dest-dir))
-       (spit dest-index-html-file html))
+       (spit dest-index-html-file final-content))
      [dest-file dest-index-html-file])))
 
 (defn add-docname-if-missing [x]
@@ -285,36 +309,40 @@
     {(ns-last-name *ns*) x}
     (if (map? x)
       x
-      (throw (ex-info "Render function must return either hiccup or a map of docname to hiccup")))))
+      (if (string? x)
+        {(ns-last-name *ns*) x}
+        (throw (ex-info (format "Render function must return either hiccup or a map of docname to hiccup, it returns %s" (type x)) {:type (type x) :x x}))))))
 
 (defn build-render!
   "When invoked in a ns, it invokes the 'render' function that must return either hicupp or a map of docname to hiccup, then converts hiccup to html and write it"
-  [& {:keys [to render-fn] :or {to PUBLIC_DIR render-fn "render"}}]
-  (assert-fn-present? "render")
-  (let [render-fn              (resolve (symbol (str *ns*) render-fn))
+  [& {:keys [to render-fn] :or {to PUBLIC_DIR render-fn "render"} :as params}]
+  (assert-fn-present? (:ns params) "render")
+  (let [render-fn              (resolve (symbol (str (:ns params)) render-fn))
         [docname hiccup]       (first (add-docname-if-missing (render-fn)))]
-    (println *ns* to render-fn docname)
-    (write-html! to docname hiccup)))
+    ;(println *ns* to render-fn docname)
+    {:render {render-fn (write-content! to "html" docname hiccup)}
+     :assets (copy-assets! params)}))
 
 (defmacro emit-build! [params]
   `(do (defn ~(symbol BUILD_FN_NAME) []
-         (let [files# (build-render! ~params)]
+         (let [files# (build-render! (assoc ~params :ns ~*ns*))]
            (staticly/reload-browser!)
            files#))
        (staticly/register-build-function! (var ~(symbol BUILD_FN_NAME)))))
 
 (defmacro def-render-builder
-  ([] `(def-render-builder {:to ~PUBLIC_DIR :render-fn "render"}))
-  ([{:keys [to render-fn] :or {to PUBLIC_DIR render-fn "render"} :as params}]
+  ([] `(def-render-builder {:from [~PUBLIC_DIR] :to ~WRITE_DIR :render-fn "render"}))
+  ([{:keys [to render-fn] :or {to WRITE_DIR render-fn "render"} :as params}]
    (log/infof "Def Staticly builder: rendering function \"%s\" writing HTML to %s" render-fn to)
    `(do
       (require 'environ.core)
       (emit-build! ~(assoc params :to to :render-fn render-fn))
       (emit-main  ~(assoc params :to to :render-fn render-fn))
-      (def ~(symbol "html-files") (build!-in-dev-env))
-      ;watch the clj file
+      (def ~(symbol "write-dir") ~to)
+      (def ~(symbol "outputs") (build!-in-dev-env))
+                                        ;watch the clj file
       (watcher/start-watcher! ~(current-file) ~(symbol (str *ns*) BUILD_FN_NAME))
-      nil)))
+      ~(symbol "outputs"))))
 
 (defmacro emit-md-build [params]
   `(do (defn ~(symbol BUILD_FN_NAME) []
@@ -360,92 +388,130 @@
                     ;normalize key as they will be used in URI
                     (assoc m (slug k) markdowns)) {} )))
 
-(defmacro default-blog-params []
-  (assert-symbol-present? "post-template")
-  (assert-symbol-present? "home-template")
-  (assert-symbol-present? "tag-template")
+(def title                           "Blog")
+(def baseurl                          "http://localhost:8080")
+(def description                     "Staticly blog")
+(defn make-render-rss-fn []
+  (fn render-rss-fn [markdowns] (defsquare.rss/render-rss {:title title :baseurl baseurl :description description} markdowns)))
+(def render-rss-fn (make-render-rss-fn))
+
+(defmacro macro-default-blog-params [ns]
   (let [{:keys [project-name doc-name]} (execution-context)]
-    `{:from                ~doc-name
-      :to                  (str PUBLIC_DIR ~doc-name)
-      :templates {:1-1 [~(symbol "post-template")]
-                  :n-1 [{:template-fn ~(symbol "home-template")}
-                        {:template-fn ~(symbol "tag-template")  :file-name "tags.html"}]}
-      :single-templates    [~(symbol "post-template")]
-      :aggregate-templates [{:template-fn ~(symbol "home-template") :file-name "index.html"}
-                            {:template-fn ~(symbol "tag-template")  :file-name "tags.html"}]
+    (assert-fn-present? ns "post-template")
+    (assert-fn-present? ns "home-template")
+    (assert-fn-present? ns "tag-template")
+    (assert-fn-present? ns "author-template")
+    `{:from              [~doc-name ~PUBLIC_DIR]
+      :to                ~(str WRITE_DIR "/" doc-name)
+      :templates {:1-1 [{:template-fn-name "post-template" :excludes nil :includes [#"\\*.md$"] :extension "html"}]
+                   :n-1 [{:template-fn      ~defsquare.staticly/render-rss-fn :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "rss"     :extension "xml"}
+                         {:template-fn-name "home-template"   :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "home"    :extension "html"}
+                         {:template-fn-name "tag-template"    :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "tags"    :extension "html" :aggregation-fn ~defsquare.staticly/aggregate-by-tags    :prefix "tags"   }
+                         {:template-fn-name "author-template" :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "authors" :extension "html" :aggregation-fn ~defsquare.staticly/aggregate-by-authors :prefix "authors"}]}
       :export-rss?         true
       :reload-word         ~project-name}))
 
+
+
 (defn default-blog-params []
   (let [{:keys [project-name doc-name]} (execution-context)]
-    {:from        "blog"
-     :to          (str PUBLIC_DIR "/" doc-name)
-     :templates   {:1-1 [
-                        {:template-fn-name "post-template" :excludes nil :includes [#"\\*.md$"] }
-                        ]
-                   :n-1 [
-                         {:template-fn-name "home-template"   :includes [#"\\*.md$"] :excludes [#"DRAFT\\*md"]              :name "home"}
-                         {:template-fn-name "tag-template"    :includes [#"\\*.md$"] :excludes [#"DRAFT\\*md"] :aggregation-fn aggregate-by-tags    :prefix "tags"    :name "tags"}
-                         {:template-fn-name "author-template" :includes [#"\\*.md$"] :excludes [#"DRAFT\\*md"] :aggregation-fn aggregate-by-authors :prefix "authors" :name "authors"}
-                         ]}
+    {:from        ["blog" PUBLIC_DIR]
+     :to          (str WRITE_DIR "/" doc-name)
+     :baseurl     baseurl
+     :title       title
+     :description description
      :export-rss? true
-     :reload-word project-name}))
+     :reload-word project-name
+     :templates   {:1-1 [{:template-fn-name "post-template" :excludes nil :includes [#"\\*.md$"] :extension "html"}]
+                   :n-1 [{:template-fn      (make-render-rss-fn) :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "rss"     :extension "xml"}
+                         {:template-fn-name "home-template"   :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "home"    :extension "html"}
+                         {:template-fn-name "tag-template"    :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "tags"    :extension "html" :aggregation-fn aggregate-by-tags    :prefix "tags"   }
+                         {:template-fn-name "author-template" :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "authors" :extension "html" :aggregation-fn aggregate-by-authors :prefix "authors"}]}}))
 
-(defn resolve-fn [fn-name]
-  (resolve (symbol (str *ns*) fn-name)))
+(defn blog-params [{:keys [from to templates export-rss? reload-word ns] :as provided-params}]
+  (let [default (default-blog-params)]
+    (assoc default
+           :ns          ns
+           :from        (or from  (:from default))
+           :to          (or (if (symbol? to) (str (var-get (resolve to))) to)  (:to default))
+           :templates   (or templates (:templates default))
+           :export-rss? (or export-rss? (:export-rss? default))
+           :reload-word (or reload-word  (:reload-word default)) )))
 
-(defn invoke-template-1-1 [template-fn files to]
+(defmacro macro-blog-params [{:keys [from to templates export-rss? reload-word ns] :as provided-params}]
+  ;(println "provided-params " provided-params)
+  `(let [default# (macro-default-blog-params ~ns)]
+    (assoc default#
+           :ns          ~ns
+           :from        (or ~from  (:from default#))
+           :to          (or ~to (:to default#))
+           :templates   (or ~templates (:templates default#))
+           :export-rss? (or ~export-rss? (:export-rss? default#))
+           :reload-word (or ~reload-word  (:reload-word default#)) )))
+
+(defn resolve-fn
+  ([fn-name]
+   (resolve (symbol (str *ns*) fn-name)))
+  ([ns fn-name]
+   (resolve (symbol ns fn-name))))
+
+(defn invoke-template-1-1 [template-fn files to extension]
   (into {} (map (fn [file] (let [html-files (->> file
                                                 md/process-file
                                                 template-fn
                                                 add-docname-if-missing
-                                                (write-html! to))]
+                                                (write-content! to extension))]
                             [file html-files])) files)))
 
-(defn invoke-template-n-1 [template-fn files to]
+(defn invoke-template-n-1 [template-fn files to extension]
   (let [[html-file index-html-file-in-dir] (->> files
                                                 (map md/process-file)
                                                 template-fn
                                                 add-docname-if-missing
-                                                (write-html! to))]
+                                                (write-content! to extension))]
     {html-file              files
      index-html-file-in-dir files}))
 
-(defn invoke-aggregation-template [template-fn aggregation-value->files to]
-  (println "invoke aggregation template" template-fn)
+(defn invoke-aggregation-template [template-fn aggregation-value->files to extension]
+  ;(println "invoke aggregation template" template-fn)
   (into {} (map (fn [[aggregation-value files]]
                   (let [html-files (->> (template-fn aggregation-value files)
                                         add-docname-if-missing
-                                        (write-html! to))]
+                                        (write-content! to extension))]
                     [aggregation-value html-files])) aggregation-value->files)))
+
+(defn- extract-template-fn [ns {:keys [template-fn template-fn-name] :as template}]
+  (println "extract template fn " ns template-fn template-fn-name)
+  (if template-fn
+    (do (assert (fn? template-fn) (format  "template-fn %s is not a function, type is" template-fn (type template-fn))) template-fn)
+    (do (assert-fn-present? (str ns) template-fn-name)
+        (resolve-fn (str ns) template-fn-name))))
+
+(defn build-blog-templates-1-1! [ns from to templates-1-1]
+  (reduce (fn [acc {:keys [includes excludes extension] :as template-1-1}]
+            (let [template-fn      (extract-template-fn ns template-1-1)
+                  files            (file-utils/list-files from includes excludes)
+                  input-to-outputs (invoke-template-1-1 template-fn files to extension)]
+              (merge acc input-to-outputs)) )
+          {} templates-1-1))
+
+(defn build-blog-templates-n-1! [ns from to templates-n-1]
+  (reduce (fn [acc {:keys [includes excludes aggregation-fn prefix name extension] :as template-n-1}]
+            (let [template-fn  (extract-template-fn ns template-n-1)
+                  outputs      (if aggregation-fn
+                                 (invoke-aggregation-template template-fn (aggregation-fn (md/process-files from includes excludes)) (if prefix (str to (file-separator) prefix) to) extension)
+                                 (invoke-template-n-1         template-fn (file-utils/list-files from includes excludes)             (if prefix (str to (file-separator) prefix) to) extension))]
+              (assoc acc name outputs)))
+          {} templates-n-1))
 
 (defn build-blog!
   "Build a blog like structure with parameters as (see default-blog-params)"
-  [& {:keys [from to templates export-rss? reload-word]}]
-  (let [default       (default-blog-params)
-        from          (or from  (:from default))
-        to            (or to  (:to default))
-        templates     (or templates (:templates default))
-        export-rss?   (or export-rss? (:export-rss? default))
-        reload-word   (or reload-word  (:reload-word default))
-        templates-1-1 (get templates :1-1)
-        templates-n-1 (get templates :n-1)]
-    (log/infof "Build blog from %s to %s with templates %s" from to templates)
-    {:1-1 (reduce (fn [acc {:keys [template-fn-name includes excludes] :as template-1-1}]
-                    (assert-fn-present? template-fn-name)
-                    (let [template-fn      (resolve-fn template-fn-name)
-                          files            (file-utils/list-files from includes excludes)
-                          input-to-outputs (invoke-template-1-1 template-fn files to)]
-                      (merge acc input-to-outputs)) )
-                  {} templates-1-1)
-     :n-1 (reduce (fn [acc {:keys [template-fn-name includes excludes aggregation-fn prefix name] :as template-n-1}]
-                    (assert-fn-present? template-fn-name)
-                    (let [template-fn  (resolve-fn template-fn-name)
-                          outputs      (if aggregation-fn
-                                         (invoke-aggregation-template template-fn (aggregation-fn (md/process-files from includes excludes)) (if prefix (str to (file-separator) prefix) to))
-                                         (invoke-template-n-1         template-fn (file-utils/list-files from includes excludes)             (if prefix (str to (file-separator) prefix) to)))]
-                      (assoc acc name outputs)))
-                  {} templates-n-1)}))
+  [& params]
+  (let [{:keys [from to templates] :as computed-params} (blog-params params)]
+    (log/infof "Build blog from %s to %s with templates %s in ns %s" from to templates (:ns computed-params))
+    {:1-1    (build-blog-templates-1-1! (:ns computed-params) from to (get templates :1-1))
+     :n-1    (build-blog-templates-n-1! (:ns computed-params) from to (get templates :n-1))
+     :assets (copy-assets! computed-params)}))
 
 (defmacro emit-blog-build [params]
   `(do (defn ~(symbol BUILD_FN_NAME) []
@@ -458,36 +524,26 @@
 (defmacro def-blog-builder
   ([]
    `(def-blog-builder {}))
-  ([{:keys [from to templates export-rss? reload-word]}]
-   (println "def-blog-builder" from to templates)
-   (let [default     (default-blog-params)
-         from        (or from (:from default))
-         to          (or (when to (str (var-get (resolve to)))) (:to default))
-         templates   (or templates (:templates default))
-         export-rss? (or export-rss? (:export-rss? default))
-         reload-word (or reload-word  (:reload-word default))
-         params      {:from from :to to :templates templates}]
-     (assert (exists? from) (format "The directory '%s' must exists for the page builder to find markdown files in it" from))
-     `(do
-        (let [params# (merge (default-blog-params) ~params)]
-
-          (require 'environ.core)
-          (log/infof "Define Staticly Blog builder: markdowns in %s dir rendered using 1-1 %s and n-1 %s exported to %s" (:from params#) (:1-1 (:templates params#)) (:n-1 (:templates params#)) (:to params#))
-          (emit-blog-build params#)
-          (def ~(symbol "export-dir") ~to)
-          (when (staticly/developer-environment?)
-            ;;execute the function and bind the result to a var
-            (def ~(symbol "outputs") (~(symbol (str *ns*) BUILD_FN_NAME)))
+  ([params]
+   `(let [params# (macro-blog-params ~(assoc params :ns *ns*))]
+      (assert (some exists? (:from params#)) (format "The directories '%s' must exists for the page builder to find markdown files and assets in it" (:from params#)))
+      (log/infof "Define Staticly Blog builder: markdowns in %s dir rendered using 1-1 %s and n-1 %s templates found in ns %s, write output to %s" (:from params#) (:1-1 (:templates params#)) (:n-1 (:templates params#)) (:ns params#) (:to params#))
+      (require 'environ.core)
+      (emit-blog-build params#)
+      (def ~(symbol "write-dir") (:to params#))
+      (when (staticly/developer-environment?)
                                         ;watch the clj file
-            (watcher/start-watcher! ~(current-file) ~(symbol (str *ns*) BUILD_FN_NAME))
-            ;;watch the 'blog' folder md files
-                                        ;(println (:from params#))
-            (watcher/start-watcher! ~from ~(symbol (str *ns*) BUILD_FN_NAME))
-            ~(symbol "outputs")))))))
+        (def ~(symbol "outputs") (build-blog! params#))
+        (watcher/start-watcher! ~(current-file) ~(symbol (str *ns*) BUILD_FN_NAME))
+        ;;watch the 'from' folder md files
+        (doseq [dir# (:from params#)]
+          (watcher/start-watcher! dir# ~(symbol (str *ns*) BUILD_FN_NAME))))
+      ~(symbol "outputs")
+      )))
 
-(def DEFAULT_PAGE_PARAMS {:from "pages"
-                          :to PUBLIC_DIR
-                          :templates {:1-1 [ {:includes [#"\\*.md$"] :template-fn-name "page-template" :excludes nil}]}})
+(def DEFAULT_PAGE_PARAMS {:from      ["pages" PUBLIC_DIR]
+                          :to        WRITE_DIR
+                          :templates {:1-1 [ {:includes [#"\\*.md$"] :template-fn-name "page-template" :excludes nil :extension "html"}]}})
 
 
 (defn build-page! [& {:keys [from to templates] :or {from      (:from DEFAULT_PAGE_PARAMS)
@@ -495,16 +551,17 @@
                                                      templates (:templates DEFAULT_PAGE_PARAMS) } :as params}]
   ;(println "build-page!" params from to templates)
   (when (not templates) (log/info "No templates defined in params, doing nothing"))
-  (reduce (fn [acc {:keys [template-fn-name includes excludes] :as template-1-1}]
-            (assert-fn-present? template-fn-name)
-            (let [files            (file-utils/list-files from includes excludes)
-                  template-fn      (resolve (symbol (str *ns*) template-fn-name))
-                  input-to-outputs (invoke-template-1-1 template-fn files to)]
-              (merge acc input-to-outputs)) ) {} (:1-1 templates)))
+  {:1-1 (reduce (fn [acc {:keys [template-fn-name includes excludes extension] :as template-1-1}]
+             (assert-fn-present? (:ns params) template-fn-name)
+             (let [files            (file-utils/list-files from includes excludes)
+                   template-fn      (resolve (symbol (str (:ns params)) template-fn-name))
+                   input-to-outputs (invoke-template-1-1 template-fn files to extension)]
+               (merge acc input-to-outputs)) ) {} (:1-1 templates))
+   :assets (copy-assets! params)})
 
 (defmacro emit-page-build [params]
   `(do (defn ~(symbol BUILD_FN_NAME) []
-         (let [written-files# (staticly/build-page! ~params)]
+         (let [written-files# (staticly/build-page! (assoc ~params :ns ~*ns*))]
            (when (staticly/developer-environment?)
              (staticly/reload-browser!))
            written-files#))
@@ -513,29 +570,29 @@
 (defmacro def-page-builder
   ([]
    (let [{:keys [doc-name]} (execution-context)]
-     `(def-page-builder {:from                ~doc-name
-                         :to                  ~PUBLIC_DIR})))
+     `(def-page-builder {:from [~doc-name ~PUBLIC_DIR] :to ~WRITE_DIR})))
   ([{:keys [from to templates]}]
    (let [{:keys [doc-name]} (execution-context)
-         from (or from doc-name)
-         to (str (var-get (resolve to)))
-         templates (or templates (:templates DEFAULT_PAGE_PARAMS))
-         params {:from from :to to :templates templates}]
-     (assert (exists? from) (format "The directory '%s' must exists for the page builder to find markdown files in it" from))
+         from               (or from doc-name)
+         to                 (if (not (string? to)) (str (var-get (resolve to))) to)
+         templates          (or templates (:templates DEFAULT_PAGE_PARAMS))
+         params             {:from from :to to :templates templates}]
+     (assert (some exists? from) (format "The directories '%s' must exists for the page builder to find markdown files in it" from))
      ;(println "def-page-builder" from to single-templates doc-name)
      `(do
         (require 'environ.core)
         (log/infof "Define Staticly builder for %s: rendering markdowns in \"%s\" dir using 1-1 templates mapping %s exported to dir \"%s\"" ~(str *ns*) ~from ~templates ~to)
         (emit-page-build ~params)
-        (def ~(symbol "export-dir") ~to)
+        (def ~(symbol "write-dir") ~to)
         (when (staticly/developer-environment?)
           ;;execute the function and bind the result to a var
-          (def ~(symbol "input-to-outputs") (~(symbol (str *ns*) BUILD_FN_NAME)))
+          (def ~(symbol "outputs") (~(symbol (str *ns*) BUILD_FN_NAME)))
           ;;watch the clj file
           (watcher/start-watcher! ~(current-file) ~(symbol (str *ns*) BUILD_FN_NAME))
           ;;watch the folder where sits the markdown files
-          (watcher/start-watcher! ~from ~(symbol (str *ns*) BUILD_FN_NAME))
-          ~(symbol "input-to-outputs"))))))
+          ~(doseq [dir from]
+            `(watcher/start-watcher! ~dir ~(symbol (str *ns*) BUILD_FN_NAME)))
+          ~(symbol "outputs"))))))
 
 (defn rebuild-and-reload! []
   (log/info "Rebuild and Reload!")
@@ -549,7 +606,6 @@
       ;;watch the file where this macro is invoked
       (watcher/start-watcher! ~(current-file) rebuild-and-reload!)
       (rebuild-and-reload!))))
-
 
 (comment
   (let [files       (file-utils/list-files "blog")

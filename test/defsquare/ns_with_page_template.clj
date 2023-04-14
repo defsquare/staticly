@@ -12,6 +12,6 @@
 
 (def ^:dynamic *export-dir* (tmp-dir "staticly"))
 
-(staticly/def-page-builder {:to *export-dir* :from "pages"})
+(staticly/def-page-builder {:to *export-dir* :from ["pages"]})
 
 ;(staticly/build-page!)

@@ -25,12 +25,6 @@
 ;(var (symbol "a"))
 (meta (var a))
 
-(def params {:from      ["blog" "pages" "resources/public"]
-             :to        "export"
-             :templates {"md" {:one-to-one   []
-                               :one-to-mult  []
-                               :mult-to-one  []
-                               :mult-to-mult []}}})
 
 ;; render a ns with a `render `function
 ;;
@@ -40,17 +34,18 @@
   (testing "A namespace with a render function without argument"
    (load-file "test/defsquare/ns_with_render.clj")
    ;(println "export filename " defsquare.ns-with-render/export-filename)
-   (is (every? file-utils/exists? defsquare.ns-with-render/html-files) (str "HTML file should exist at the locations: " defsquare.ns-with-render/html-files))
-   (is (= (slurp (first defsquare.ns-with-render/html-files)) "<html><body><h1>amazing content</h1></body></html>") )))
+   (is (every? file-utils/exists? (flatten (get-in defsquare.ns-with-render/outputs [:render #'defsquare.ns-with-render/render]))) (str "HTML file should exist at the locations: " defsquare.ns-with-render/outputs))
+   (is (= (slurp (first (get-in defsquare.ns-with-render/outputs [:render #'defsquare.ns-with-render/render]))) "<html><body><h1>amazing content</h1></body></html>") )))
 
 (deftest ns-with-page-template
   (testing "A namespace with a template receiving markdown as input and outputing hiccup"
     (load-file "test/defsquare/ns_with_page_template.clj")
-    (doseq [[input outputs] defsquare.ns-with-page-template/input-to-outputs
+    (doseq [[input outputs] (:1-1 defsquare.ns-with-page-template/outputs)
             output outputs]
       ;(println "output" output)
+      (is (file-utils/exists? input))
       (is (file-utils/exists? output))
-      (is (not (file-utils/empty? output)))
+      (is (not (file-utils/file-empty? output)))
       (let [{:keys [metadata]} (md/parse-metadata input)]
         ;(println "metadata" metadata (:title metadata))
         (is (= (slurp output) (str "<html><head><title>" (:title metadata) "</title></head><body><h1>amazing content</h1></body></html>")))))))
@@ -58,24 +53,24 @@
 (deftest ns-with-blog-template
   (testing "A namespace with several templates receiving markdown as input, aggregated markdowns and outputing hiccup"
     (load-file "test/defsquare/ns_with_blog_template.clj")
-    (let [outputs-1-1 (:1-1 defsquare.ns-with-blog-template/outputs)
-          outputs-n-1 (:n-1 defsquare.ns-with-blog-template/outputs)]
+    (let [{outputs-1-1 :1-1 outputs-n-1 :n-1 assets :assets } defsquare.ns-with-blog-template/outputs]
+      (is (> (count assets) 0))
       (doseq [[input outputs] outputs-1-1
               output          outputs]
-                                        ;(println "output" output)
         (is (file-utils/exists? output))
-        (is (not (file-utils/empty? output)))
+        (is (not (file-utils/file-empty? output)))
         (let [{:keys [metadata hiccup html file path]} (md/process-file input)]
                                         ;(println "metadata" metadata hiccup)
           (is (and html file path))
           (is (= (slurp output) (str "<html><head><title>" (:title metadata) "</title></head><body>" (hiccup/html hiccup) "</body></html>")))))
       (let [home-outputs    (get outputs-n-1 "home")
             tags-outputs    (get outputs-n-1 "tags")
-            authors-outputs (get outputs-n-1 "authors")]
+            authors-outputs (get outputs-n-1 "authors")
+            rss-outputs     (get outputs-n-1 "rss")]
         (is (= (count home-outputs) 2))
         (doseq [[output inputs] home-outputs]
           (is (file-utils/exists? output))
-          (is (not (file-utils/empty? output)))
+          (is (not (file-utils/file-empty? output)))
           (is (= (slurp output) (hiccup/html [:html
                                               [:head [:title "Blog"]]
                                               [:body

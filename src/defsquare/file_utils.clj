@@ -322,7 +322,7 @@
   [file]
   (loop [cl (.. Thread currentThread getContextClassLoader)]
     (when cl
-      (println "cl" cl)
+      ;(println "cl" cl)
       (if-let [url (.findResource cl file)]
         url
         (recur (.getParent cl))))))
@@ -351,5 +351,10 @@
    name
    (into-array java.nio.file.attribute.FileAttribute [])))
 
-(defn empty? [f]
+(defn file-empty? [f]
   (= 0 (count (slurp f))))
+
+(defn as-file [x]
+  (if (instance? java.nio.file.Path x)
+    (.toFile x)
+    (io/as-file x)))

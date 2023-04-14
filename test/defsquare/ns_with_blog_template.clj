@@ -35,6 +35,10 @@
 
 (def ^:dynamic *export-dir* (tmp-dir "staticly"))
 
-(staticly/def-blog-builder {:to *export-dir* :from "blog"})
+(staticly/def-blog-builder {:to *export-dir*
+                            :from ["blog" "resources/public"]
+                          ;  :templates {:n-1 [{:template-fn      defsquare.staticly/render-rss-fn     :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "rss"     :extension "xml"}
+                          ;                    {:template-fn-name "home-template"   :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "home"    :extension "html"}]}
+                            })
 
 ;(staticly/build-blog!)
