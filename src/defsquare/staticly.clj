@@ -17,7 +17,7 @@
 
 (def rendered-filetypes #{"md" "mds" "clj" "cljc" "cljs" "yaml" "json" "edn"})
 
-(def copied-filetypes #{"jpg" "png" "svg" "css" "html" "js"})
+(def copied-filetypes #{"jpg" "jpeg"  "png" "svg" "css" "html" "js" "ttf" "woff" "woff2" "eot" "ico"})
 
 
 (defn lower

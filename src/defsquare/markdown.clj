@@ -16,6 +16,7 @@
    [markdown.transformers :as transformers]
    [nextjournal.markdown :as next.md]
    [nextjournal.markdown.transform :as next.md.transform])
+  (:refer-clojure :exclude [read])
   (:import
    [java.text Normalizer]))
 
