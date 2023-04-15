@@ -69,7 +69,7 @@
 (defn exists?
   "Return true if `path` exists."
   [path]
-  (predicate exists (file path)))
+  (predicate exists (io/as-file path)))
 
 (defn absolute
   "Return absolute file."
@@ -97,9 +97,15 @@
              :else base))))
 
 (defn directory?
-  "Return true if `path` is a directory."
-  [path]
-  (predicate isDirectory (file path)))
+  "Return true if `f` is a directory."
+  [f]
+  (predicate isDirectory (io/as-file f)))
+
+(defn file?
+  "Return true if `f` is a directory."
+  [f]
+  (predicate isFile (io/as-file f)))
+
 
 (defn split-ext
   "Returns a vector of `[name extension]`."
@@ -169,18 +175,41 @@
     (let [{:keys [dir root base name ext] :as all} (parse-path file)]
       (re-matches re base))))
 
-(defn list-files
-  ([dir]
-   (filter (comp not directory?) (file-seq (io/file dir))))
-  ([dir pred]
-   (filter pred (list-files dir))))
+(defn list-files-in-dirs
+  "list all the files (including subdir) in the directory"
+  [& dirs]
+  (->> dirs
+      (map (comp file-seq io/file))
+      (apply concat)
+      (filter (comp not directory?))))
 
-(defn- as-path
-  ^Path [path]
-  (if (instance? Path path) path
-      (if (instance? URI path)
-        (java.nio.file.Paths/get ^URI path)
-        (.toPath (io/file path)))))
+(defn list-files
+  "return a list of [files](https://docs.oracle.com/javase/8/docs/api/java/io/File.html) from a unique dir or a seq of dirs. A predicate can be added to include only the files (predicate is given the file object).
+  The 3-arity version's arguments are: a single dir or seq of dir, a sequence of regex that include the files if they match the file's relative path , a sequence of regex that exclude the files if they match the file's path"
+  ([dirs]
+   (->> (if (coll? dirs)
+          (apply concat (map (comp file-seq io/file) dirs))
+          (file-seq (io/file dirs)))
+        (filter (comp not directory?))))
+  ([dirs include?]
+   (filter include? (list-files dirs)))
+  ([dirs include-regexes exclude-regexes]
+   (let [all-files  (list-files dirs)
+        include-filter (if (empty? include-regexes)
+                         (fn [_] true)
+                         (fn [f] (some #(re-find % (.getPath f)) include-regexes)))
+        exclude-filter (if (empty? exclude-regexes)
+                         (fn [_] true)
+                         (fn [f] (not (some #(re-find % (.getPath f)) exclude-regexes))))]
+    (filter #(and (include-filter %) (exclude-filter %)) all-files))))
+
+
+(defn as-path
+  ^Path [x]
+  (if (instance? Path x) x
+      (if (instance? URI x)
+        (java.nio.file.Paths/get ^URI x)
+        (.toPath (io/file x)))))
 
 (defn str->posix
   "Converts a string to a set of PosixFilePermission."
@@ -255,17 +284,20 @@
     ;; Windows, replace with double escape.
     (str/replace separator "\\" "\\\\")))
 
-(defn ensure-out-dir [out-path drop-last?]
-  (let [split-path (str/split out-path (re-pattern (file-separator)))
-        split-path (if drop-last? (drop-last split-path) split-path)
-        intermediate-paths (map-indexed
+(defn ensure-out-dir
+  ([out-path]
+   (ensure-out-dir out-path false))
+  ([out-path drop-last?]
+   (let [split-path         (str/split out-path (re-pattern (file-separator)))
+         split-path         (if drop-last? (drop-last split-path) split-path)
+         intermediate-paths (map-indexed
                              (fn [i _]
                                (str/join (file-separator) (take (inc i) split-path)))
                              split-path)]
-    (doseq [path intermediate-paths]
-      (let [file (io/file path)]
-        (when-not (.isDirectory file)
-          (.mkdir file))))))
+     (doseq [path intermediate-paths]
+       (let [file (io/file path)]
+         (when-not (.isDirectory file)
+           (.mkdir file)))))))
 
 (defn ns-to-source-file
   "Converts the namespace object to a source (.clj) file path."
@@ -290,7 +322,7 @@
   [file]
   (loop [cl (.. Thread currentThread getContextClassLoader)]
     (when cl
-      (println "cl" cl)
+      ;(println "cl" cl)
       (if-let [url (.findResource cl file)]
         url
         (recur (.getParent cl))))))
@@ -313,3 +345,16 @@
         (find-uncle-file (File. ".") "project.clj")
         (find-uncle-file (File. ".") "deps.edn"))))
 
+(defn tmp-dir [name]
+  (Files/createTempDirectory
+   (.toPath (io/as-file (System/getProperty "java.io.tmpdir")))
+   name
+   (into-array java.nio.file.attribute.FileAttribute [])))
+
+(defn file-empty? [f]
+  (= 0 (count (slurp f))))
+
+(defn as-file [x]
+  (if (instance? java.nio.file.Path x)
+    (.toFile x)
+    (io/as-file x)))

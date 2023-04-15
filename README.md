@@ -155,6 +155,43 @@ Two "template" functions to implement :
 Staticly provides a macro `def-blog-builder` that:
 *
 
+# Engine implementation
+
+The engine can be considered as a pipeline from a seq of `from` dirs that export `to` a single dir. 
+The `from` dirs contains either assets (js, css, img files) that are often _copied_ or markdown files that are _rendered_.
+The engine has 4 options of input/output for templates:
+
+| Input | Output | Key in templates param |
+|---|---|---|
+|  one file        | one output file         | `:1-1` |
+|  one file        | multiple output files   | `:1-n` |
+|  multiple files  | one output file         | `:n-1` |
+|  multiple files  | multiple output files   | `:n-n` | 
+
+## Assets copy
+
+Assets (file types in `(def copied-filetypes #{"jpg" "png" "svg" "css" "html" "js"}`) are copied with the relative path from the root `from` dir to the `to` destination dir.
+
+## Templating
+
+Templates takes an input files in the file types `(def rendered-filetypes #{"md" "clj" "cljc" "cljs" "yaml" "json" "edn"})` and return hiccup in a map with keys a string as the path to the file they will be rendered into.
+For every input files, each one are given as a map to the template with the following keys:
+
+* `path` a path object of the file
+* `file`, file object
+* `raw` a string with the raw content of the file
+* `type` a string among the rendered-filetypes `md`, `clj`, `cljc`, `cljs`, `yaml`, `json` or `edn`
+
+plus the following keys for:
+
+* `md` files: `:hiccup` (for the html or custom transformation see section ) and `:metadata` with the EDN content of the YAML front-matter
+* `yaml`, `json` or `edn`: conversion and evaluation under the `:data` keys
+* `clj`, `cljc` or `cljs`: evaluation of the file (so the file's symbols are then available in its namespace)
+
+A template then return a map of string for path as key and hiccup as value.
+
+The `build!` function is configured with a map with the `from`, `to` and `templates`.
+
 
 # Hosting
 
@@ -213,6 +250,15 @@ To get the Hiccup corresponding to the HTML code you just have to execute the fo
     html->hiccup
     str
     copy)
+
+;;here is the fully qualified version to avoid any require
+(->
+  (defsquare.clipboard/paste);;paste the system clipboard into a string
+  (defsquare.hiccup/html->hiccup);;transform that string into Hiccup data structure 
+  (clojure.pprint/pprint);;align and wrap the result
+  (with-out-str);;into a string
+  (defsquare.clipboard/copy);;copy back the string with hiccup into the system clipboard
+  )
 
 ```
 
