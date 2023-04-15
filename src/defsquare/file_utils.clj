@@ -258,7 +258,7 @@
 
 (defn join-paths [path1 path2]
   (str (strip-path-seps path1)
-       (java.io.File/separatorChar)
+       (when (not (.startsWith path2 "/")) (java.io.File/separatorChar))
        path2))
 
 (defn drop-extension [relative-path]
