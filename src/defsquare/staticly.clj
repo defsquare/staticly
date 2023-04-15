@@ -325,7 +325,7 @@
 
 (defmacro emit-build! [params]
   `(do (defn ~(symbol BUILD_FN_NAME) []
-         (let [files# (build-render! (assoc ~params :ns ~*ns*))]
+         (let [files# (doall (build-render! (assoc ~params :ns ~*ns*)))]
            (staticly/reload-browser!)
            files#))
        (staticly/register-build-function! (var ~(symbol BUILD_FN_NAME)))))
@@ -339,7 +339,7 @@
       (emit-build! ~(assoc params :to to :render-fn render-fn))
       (emit-main  ~(assoc params :to to :render-fn render-fn))
       (def ~(symbol "write-dir") ~to)
-      (def ~(symbol "outputs") (build!-in-dev-env))
+      (def ~(symbol "outputs") (~(symbol (str *ns*) BUILD_FN_NAME)))
                                         ;watch the clj file
       (watcher/start-watcher! ~(current-file) ~(symbol (str *ns*) BUILD_FN_NAME))
       ~(symbol "outputs"))))
