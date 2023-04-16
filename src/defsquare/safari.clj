@@ -3,7 +3,7 @@
             [clojure.tools.logging :as log]))
 
 (defn reload-safari-tab! [s]
-  (log/log (clojure.tools.logging.impl/jul-factory) 'defsquare.staticly :info nil (str  "Reload Safari tab containing \"" s "\""))
+  (log/info (str  "Reload Safari tab containing \"" s "\""))
   (shell/sh "osascript" :in (str " tell application \"Safari\"
    set windowList to every window
    repeat with aWindow in windowList

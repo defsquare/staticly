@@ -389,62 +389,77 @@
                     (assoc m (slug k) markdowns)) {} )))
 
 (def title                           "Blog")
-(def baseurl                          "http://localhost:8080")
+(def baseurl                         "http://localhost:8080")
 (def description                     "Staticly blog")
-(defn make-render-rss-fn []
-  (fn render-rss-fn [markdowns] (defsquare.rss/render-rss {:title title :baseurl baseurl :description description} markdowns)))
-(def render-rss-fn (make-render-rss-fn))
+(defn make-render-rss-fn [params]
+  (fn render-rss-fn [markdowns] (defsquare.rss/render-rss params markdowns)))
+;(def render-rss-fn (make-render-rss-fn))
 
-(defmacro macro-default-blog-params [ns]
-  (let [{:keys [project-name doc-name]} (execution-context)]
+(defmacro macro-default-blog-params [{:keys [ns] :as provided-params}]
+  (let [{:keys [project-name doc-name]} (execution-context)
+        export-rss?                     (or (:export-rss? provided-params) true)
+        baseurl                         (or (:baseurl provided-params) baseurl)
+        title                           (or (:title provided-params) title)
+        description                     (or (:description provided-params) description)]
     (assert-fn-present? ns "post-template")
     (assert-fn-present? ns "home-template")
     (assert-fn-present? ns "tag-template")
     (assert-fn-present? ns "author-template")
-    `{:from              [~doc-name ~PUBLIC_DIR]
-      :to                ~(str WRITE_DIR "/" doc-name)
-      :templates {:1-1 [{:template-fn-name "post-template" :excludes nil :includes [#"\\*.md$"] :extension "html"}]
-                   :n-1 [{:template-fn      ~defsquare.staticly/render-rss-fn :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "rss"     :extension "xml"}
-                         {:template-fn-name "home-template"   :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "home"    :extension "html"}
-                         {:template-fn-name "tag-template"    :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "tags"    :extension "html" :aggregation-fn ~defsquare.staticly/aggregate-by-tags    :prefix "tags"   }
-                         {:template-fn-name "author-template" :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "authors" :extension "html" :aggregation-fn ~defsquare.staticly/aggregate-by-authors :prefix "authors"}]}
-      :export-rss?         true
-      :reload-word         ~project-name}))
+    `{:from        [~doc-name ~PUBLIC_DIR]
+      :to          ~(str WRITE_DIR "/" doc-name)
+      :baseurl     ~baseurl
+      :title       ~title
+      :description ~description
+      :export-rss? ~export-rss?
+      :reload-word ~project-name
+      :templates   {:1-1 [{:template-fn-name "post-template" :excludes nil :includes [#"\\*.md$"] :extension "html"}]
+                    :n-1 [~(when export-rss? `{:template-fn (make-render-rss-fn {:baseurl ~baseurl :title ~title :description ~description}) :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "rss" :extension "xml"})
+                          {:template-fn-name "home-template" :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "home" :extension "html"}
+                          {:template-fn-name "tag-template" :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "tags" :extension "html" :aggregation-fn ~defsquare.staticly/aggregate-by-tags :prefix "tags"   }
+                          {:template-fn-name "author-template" :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "authors" :extension "html" :aggregation-fn ~defsquare.staticly/aggregate-by-authors :prefix "authors"}]}}))
 
-
-
-(defn default-blog-params []
-  (let [{:keys [project-name doc-name]} (execution-context)]
+(defn default-blog-params [provided-params]
+  (let [{:keys [project-name doc-name]} (execution-context)
+        export-rss? (or (:export-rss? provided-params) true)
+        baseurl     (or (:baseurl provided-params) baseurl)
+        title       (or (:description provided-params) title)
+        description (or (:description provided-params) description)]
     {:from        ["blog" PUBLIC_DIR]
      :to          (str WRITE_DIR "/" doc-name)
      :baseurl     baseurl
      :title       title
      :description description
-     :export-rss? true
+     :export-rss? export-rss?
      :reload-word project-name
      :templates   {:1-1 [{:template-fn-name "post-template" :excludes nil :includes [#"\\*.md$"] :extension "html"}]
-                   :n-1 [{:template-fn      (make-render-rss-fn) :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "rss"     :extension "xml"}
+                   :n-1 [(when export-rss? {:template-fn (make-render-rss-fn {:baseurl baseurl :title title :description description}) :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "rss" :extension "xml"})
                          {:template-fn-name "home-template"   :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "home"    :extension "html"}
                          {:template-fn-name "tag-template"    :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "tags"    :extension "html" :aggregation-fn aggregate-by-tags    :prefix "tags"   }
                          {:template-fn-name "author-template" :includes [#"\\*.md$"] :excludes [#".*DRAFT.*md"] :name "authors" :extension "html" :aggregation-fn aggregate-by-authors :prefix "authors"}]}}))
 
-(defn blog-params [{:keys [from to templates export-rss? reload-word ns] :as provided-params}]
-  (let [default (default-blog-params)]
+(defn blog-params [{:keys [from to templates export-rss? reload-word ns baseurl title description] :as provided-params}]
+  (let [default (default-blog-params provided-params)]
     (assoc default
            :ns          ns
            :from        (or from  (:from default))
            :to          (or (if (symbol? to) (str (var-get (resolve to))) to)  (:to default))
+           :baseurl     (or baseurl (:baseurl default))
+           :title       (or title (:description default))
+           :description (or description (:description default))
            :templates   (or templates (:templates default))
            :export-rss? (or export-rss? (:export-rss? default))
            :reload-word (or reload-word  (:reload-word default)) )))
 
-(defmacro macro-blog-params [{:keys [from to templates export-rss? reload-word ns] :as provided-params}]
+(defmacro macro-blog-params [{:keys [from to templates export-rss? reload-word ns baseurl title description] :as provided-params}]
   ;(println "provided-params " provided-params)
-  `(let [default# (macro-default-blog-params ~ns)]
+  `(let [default# (macro-default-blog-params ~provided-params)]
     (assoc default#
            :ns          ~ns
            :from        (or ~from  (:from default#))
            :to          (or ~to (:to default#))
+           :baseurl     (or ~baseurl (:baseurl default#))
+           :title       (or ~title (:description default#))
+           :description (or ~description (:description default#))
            :templates   (or ~templates (:templates default#))
            :export-rss? (or ~export-rss? (:export-rss? default#))
            :reload-word (or ~reload-word  (:reload-word default#)) )))
@@ -481,36 +496,36 @@
                     [aggregation-value html-files])) aggregation-value->files)))
 
 (defn- extract-template-fn [ns {:keys [template-fn template-fn-name] :as template}]
-  (println "extract template fn " ns template-fn template-fn-name)
+  ;(println "extract template fn " ns template-fn template-fn-name)
   (if template-fn
     (do (assert (fn? template-fn) (format  "template-fn %s is not a function, type is" template-fn (type template-fn))) template-fn)
     (do (assert-fn-present? (str ns) template-fn-name)
         (resolve-fn (str ns) template-fn-name))))
 
-(defn build-blog-templates-1-1! [ns from to templates-1-1]
+(defn build-blog-templates-1-1! [{:keys [ns from to templates] :as params}]
   (reduce (fn [acc {:keys [includes excludes extension] :as template-1-1}]
             (let [template-fn      (extract-template-fn ns template-1-1)
                   files            (file-utils/list-files from includes excludes)
                   input-to-outputs (invoke-template-1-1 template-fn files to extension)]
               (merge acc input-to-outputs)) )
-          {} templates-1-1))
+          {} (:1-1 templates)))
 
-(defn build-blog-templates-n-1! [ns from to templates-n-1]
+(defn build-blog-templates-n-1! [{:keys [ns from to templates] :as params}]
   (reduce (fn [acc {:keys [includes excludes aggregation-fn prefix name extension] :as template-n-1}]
             (let [template-fn  (extract-template-fn ns template-n-1)
                   outputs      (if aggregation-fn
                                  (invoke-aggregation-template template-fn (aggregation-fn (md/process-files from includes excludes)) (if prefix (str to (file-separator) prefix) to) extension)
                                  (invoke-template-n-1         template-fn (file-utils/list-files from includes excludes)             (if prefix (str to (file-separator) prefix) to) extension))]
               (assoc acc name outputs)))
-          {} templates-n-1))
+          {} (:n-1 templates)))
 
 (defn build-blog!
   "Build a blog like structure with parameters as (see default-blog-params)"
   [& params]
-  (let [{:keys [from to templates] :as computed-params} (blog-params params)]
-    (log/infof "Build blog from %s to %s with templates %s in ns %s" from to templates (:ns computed-params))
-    {:1-1    (build-blog-templates-1-1! (:ns computed-params) from to (get templates :1-1))
-     :n-1    (build-blog-templates-n-1! (:ns computed-params) from to (get templates :n-1))
+  (let [{:keys [from to templates ns] :as computed-params} (blog-params params)]
+    (log/infof "Build blog from %s to %s with templates %s in ns %s" from to templates ns)
+    {:1-1    (build-blog-templates-1-1! computed-params)
+     :n-1    (build-blog-templates-n-1! computed-params)
      :assets (copy-assets! computed-params)}))
 
 (defmacro emit-blog-build [params]

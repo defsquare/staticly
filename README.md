@@ -15,6 +15,7 @@ An opinionated Static-Site Generator associating [Clojure](https://clojure.org),
 **Table of Contents**
 
 - [Staticly](#staticly)
+- [Rationale](#rationale)
 - [Usage](#usage)
     - [Rendering with everything in a Clojure `render` function](#rendering-with-everything-in-a-clojure-render-function)
     - [Page rendering from Markdown files with a template](#page-rendering-from-markdown-files-with-a-template)
@@ -31,6 +32,11 @@ An opinionated Static-Site Generator associating [Clojure](https://clojure.org),
 
 <!-- markdown-toc end -->
 
+# Rationale
+
+I wanted a versatile blog engine in Clojure that allows me build website and blog in an easy and simple way with the following features:
+* Hiccup component based as I found it's a very easy way to build reusable components, utility to convert [Tailwind CSS](https://tailwindcss.com) and [UI](https://tailwindui.com/components) components into hiccup
+* Markdown processing with a way to override how each element are rendered (thanks to [nextjournal/markdown](https://github.com/nextjournal/markdown))
 
 # Usage
 
@@ -66,7 +72,7 @@ You write a `render` function in your ns, with no argument, that just output a H
     (body)
     (footer)])
 
-;;WE export the html, reload the browser and define a `build!` function that do that
+;;WE export the html, reload the browser and define a `build!` function in that ns
 (staticly/def-render-builder)
 
 ```
@@ -153,19 +159,21 @@ Two "template" functions to implement :
 * `tag-template`: template that outputs HTML for a given tag (holding a set of markdown files)
 
 Staticly provides a macro `def-blog-builder` that:
-*
+
 
 # Engine implementation
 
 The engine can be considered as a pipeline from a seq of `from` dirs that export `to` a single dir. 
-The `from` dirs contains either assets (js, css, img files) that are often _copied_ or markdown files that are _rendered_.
-The engine has 4 options of input/output for templates:
+The `from` dirs contains either assets (js, css, img files) that are _copied_ or markdown files that are _rendered_.
+The engine has currently 2 options of input/output for templates:
 
-| Input | Output | Key in templates param |
-|---|---|---|
-|  one file        | one output file         | `:1-1` |
+| Input | Output | Key in templates param | Usage |
+|---|---|---|---|
+|  one file        | one output file         | `:1-1` | one markdown file gives one HTML file (About page, a landing page) |
+|  multiple files  | one output file         | `:n-1` | multiple markdown files gives one HTML file (the home of a blog that lists all the posts, the posts for an author) |
+
+
 |  one file        | multiple output files   | `:1-n` |
-|  multiple files  | one output file         | `:n-1` |
 |  multiple files  | multiple output files   | `:n-n` | 
 
 ## Assets copy

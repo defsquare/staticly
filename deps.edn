@@ -3,6 +3,9 @@
          org.clojure/tools.logging {:mvn/version "1.2.4"}
          org.clojure/core.async    {:mvn/version "1.5.648"}
 
+         org.apache.logging.log4j/log4j-api  {:mvn/version "2.20.0"}
+         org.apache.logging.log4j/log4j-core {:mvn/version "2.20.0"}
+
          markdown-clj/markdown-clj             {:mvn/version "1.10.7"}
          ;;YAML found in markdown front matter
          clj-commons/clj-yaml                  {:mvn/version "0.7.109"}
