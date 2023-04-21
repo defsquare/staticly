@@ -5,7 +5,6 @@
    [clojure.edn :as edn]
    [clojure.java.io :as io]
    [clojure.string :as str]
-   [defsquare.file-utils :as file-utils]
    [hickory.core :as hickory]
    [instaparse.core :as insta]
    [markdown.common :as common ]
@@ -15,7 +14,8 @@
    [markdown.tables :as tables ]
    [markdown.transformers :as transformers]
    [nextjournal.markdown :as next.md]
-   [nextjournal.markdown.transform :as next.md.transform])
+   [nextjournal.markdown.transform :as next.md.transform]
+   [defsquare.files :as file-utils])
   (:refer-clojure :exclude [read])
   (:import
    [java.text Normalizer]))

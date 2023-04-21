@@ -1,6 +1,6 @@
 (ns defsquare.ns-with-page-template
   (:require  [clojure.test :as t]
-             [defsquare.file-utils :refer [tmp-dir]]
+             [defsquare.files :refer [tmp-dir]]
              [defsquare.staticly :as staticly]))
 
 (defn page-template [{:keys [metadata html hiccup raw file path type] :as markdown}]

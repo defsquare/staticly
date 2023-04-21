@@ -1,8 +1,8 @@
-(ns defsquare.file-utils
+(ns defsquare.files
   (:require [clojure.java.io :as io]
             [clojure.string :as str])
   (:import [java.net URI]
-           [java.nio.file Files Path]
+           [java.nio.file Files Path LinkOption]
            [java.nio.file.attribute  FileAttribute  PosixFilePermissions]
            [java.io File])
   (:refer-clojure :exclude [name parents]))
@@ -33,9 +33,9 @@
    the `paths` and cwd."
   [path & paths]
   (when-let [path (apply
-                   io/file (if (= path ".")
+                   io/file (if (= (str path) ".")
                              *cwd*
-                             path)
+                             (str path))
                    paths)]
     (if (.isAbsolute ^File path)
       path
@@ -44,7 +44,7 @@
 (defn absolute?
   "Return true if `path` is absolute."
   [path]
-  (predicate isAbsolute (io/file path)))
+  (predicate isAbsolute (file path)))
 
 (defn executable?
   "Return true if `path` is executable."
@@ -69,7 +69,7 @@
 (defn exists?
   "Return true if `path` exists."
   [path]
-  (predicate exists (io/as-file path)))
+  (predicate exists (file path)))
 
 (defn absolute
   "Return absolute file."
@@ -96,16 +96,36 @@
                         (if (pos? dot) (subs base 0 dot) base))
              :else base))))
 
-(defn directory?
+#_(defn directory?
   "Return true if `f` is a directory."
   [f]
   (predicate isDirectory (io/as-file f)))
+
+(defn- ->link-opts ^"[Ljava.nio.file.LinkOption;"
+  [nofollow-links]
+  (into-array LinkOption
+              (cond-> []
+                nofollow-links
+                (conj LinkOption/NOFOLLOW_LINKS))))
+
+(defn as-path
+  ^Path [x]
+  (if (instance? Path x) x
+      (if (instance? URI x)
+        (java.nio.file.Paths/get ^URI x)
+        (.toPath (io/file x)))))
+
+(defn directory?
+  "Returns true if f is a directory, using Files/isDirectory."
+  ([f] (directory? f nil))
+  ([f {:keys [:nofollow-links]}]
+   (Files/isDirectory (as-path f)
+                      (->link-opts nofollow-links))))
 
 (defn file?
   "Return true if `f` is a directory."
   [f]
   (predicate isFile (io/as-file f)))
-
 
 (defn split-ext
   "Returns a vector of `[name extension]`."
@@ -204,12 +224,21 @@
     (filter #(and (include-filter %) (exclude-filter %)) all-files))))
 
 
-(defn as-path
-  ^Path [x]
-  (if (instance? Path x) x
-      (if (instance? URI x)
-        (java.nio.file.Paths/get ^URI x)
-        (.toPath (io/file x)))))
+(defn as-file [x]
+  (if (instance? java.nio.file.Path x)
+    (.toFile x)
+    (io/as-file x)))
+
+
+(defn path
+  "Coerces f into a Path. Multiple-arg versions treat the first argument as
+  parent and subsequent args as children relative to the parent."
+  (^Path [f]
+   (as-path f))
+  (^Path [parent child]
+   (as-path (io/file (as-file parent) (as-file child))))
+  (^Path [parent child & more]
+   (reduce path (path parent child) more)))
 
 (defn str->posix
   "Converts a string to a set of PosixFilePermission."
@@ -354,7 +383,3 @@
 (defn file-empty? [f]
   (= 0 (count (slurp f))))
 
-(defn as-file [x]
-  (if (instance? java.nio.file.Path x)
-    (.toFile x)
-    (io/as-file x)))

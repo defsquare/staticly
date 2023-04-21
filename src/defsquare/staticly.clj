@@ -7,18 +7,22 @@
             [hiccup.core :as hiccup]
             [lambdaisland.uri.normalize :as normalize]
 
+;            [mount.lite :refer [defstate]]
+
             [defsquare.markdown :as md]
-            [defsquare.file-utils :as file-utils :refer [exists? canonical-path relative-path as-path directory? file? strip-path-seps join-paths drop-extension html-extension extension file-separator ensure-out-dir]]
+            [defsquare.files :as file-utils :refer [exists? canonical-path relative-path as-path directory? file? strip-path-seps join-paths drop-extension html-extension extension file-separator ensure-out-dir]]
             [defsquare.rss :refer [write-rss!]]
             [defsquare.watcher :as watcher :refer [start-watcher!]]
-            [defsquare.safari :as safari :refer [reload-safari-tab!]]
-            [defsquare.staticly :as staticly])
+            [defsquare.safari :as safari :refer [reload-tab!]]
+            [defsquare.server :as server]
+            )
   (:import [java.io File]))
 
 (def rendered-filetypes #{"md" "mds" "clj" "cljc" "cljs" "yaml" "json" "edn"})
 
 (def copied-filetypes #{"jpg" "jpeg"  "png" "svg" "css" "html" "js" "ttf" "woff" "woff2" "eot" "ico"})
 
+;(defstate http-server :start (server/start-server! ))
 
 (defn lower
   "Converts string to all lower-case.
@@ -143,14 +147,16 @@
 (defn copy-assets! [{:keys [from to dest-path-fn]}]
   (log/infof "Copy assets from %s to %s" from to)
   (reduce (fn [acc dir]
-            (reduce (fn [acc file]
-                      (let [dest-path (dest-path dir to identity (.getPath file))]
-                        (ensure-out-dir dest-path true)
-                        (log/infof "Copy asset file %s to %s" file dest-path)
-                        (io/copy file (io/file dest-path))
-                        (conj acc {:dest-path dest-path :file file :type :asset})))
-                    acc
-                    (file-utils/list-files dir (fn [file] (copied-filetypes (file-utils/extension (.getPath file))) )))) [] from))
+            (let [files (doall (file-utils/list-files dir (fn [file] (copied-filetypes (file-utils/extension (.getPath file))) )))]
+              (log/infof "Copy asset files: %s" files)
+              (reduce (fn [acc file]
+                        (let [dest-path (dest-path dir to identity (.getPath file))]
+                          (ensure-out-dir dest-path true)
+                          (log/debugf "Copy asset file %s to %s" file dest-path)
+                          (io/copy file (io/file dest-path))
+                          (conj acc {:dest-path dest-path :file file :type :asset})))
+                      acc
+                      files))) [] from))
 
 (defmethod build-file! :copy [params file]
   (log/infof "Build/copy file %s" file)
@@ -254,7 +260,7 @@
 
 (defn reload-browser! []
   (when (developer-environment?)
-    (safari/reload-safari-tab! (reload-word))))
+    (safari/reload-tab! (reload-word))))
 
 (defmacro emit-main [params]
   `(defn ~(symbol "-main") [& args#]
@@ -330,6 +336,11 @@
            files#))
        (staticly/register-build-function! (var ~(symbol BUILD_FN_NAME)))))
 
+(defmacro start-server [to]
+  `(let [port# ~(server/next-available-port 8080)]
+     (def ~(symbol "server") {:port port# :stop-fn! (server/start-server! ~to port#)})
+     (safari/open-or-reload! (str "http://localhost:" port#))))
+
 (defmacro def-render-builder
   ([] `(def-render-builder {:from [~PUBLIC_DIR] :to ~WRITE_DIR :render-fn "render"}))
   ([{:keys [to render-fn] :or {to WRITE_DIR render-fn "render"} :as params}]
@@ -341,7 +352,9 @@
       (def ~(symbol "write-dir") ~to)
       (def ~(symbol "outputs") (~(symbol (str *ns*) BUILD_FN_NAME)))
                                         ;watch the clj file
-      (watcher/start-watcher! ~(current-file) ~(symbol (str *ns*) BUILD_FN_NAME))
+      (when (developer-environment?)
+        (watcher/start-watcher! ~(current-file) ~(symbol (str *ns*) BUILD_FN_NAME))
+        (start-server ~to))
       ~(symbol "outputs"))))
 
 (defmacro emit-md-build [params]

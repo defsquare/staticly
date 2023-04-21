@@ -1,7 +1,7 @@
 (ns defsquare.rss
   (:require [clj-rss.core :as rss]
             [clojure.tools.logging :as log]
-            [defsquare.file-utils :refer [file-separator]]))
+            [defsquare.files :refer [file-separator]]))
 
 (defn blog-post-link [{:keys [baseurl from] :as params} markdown]
   ;(println "blog-post-link" (:metadata markdown))

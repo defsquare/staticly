@@ -2,7 +2,7 @@
   (:require
    [clojure.test :as test :refer [deftest is testing]]
    [hiccup.core :as hiccup]
-   [defsquare.file-utils :as file-utils :refer [exists?]]
+   [defsquare.files :as file-utils]
    [defsquare.markdown :as md]
    [defsquare.ns-1-1]
    [defsquare.ns-with-blog-template]
@@ -62,6 +62,7 @@
         (let [{:keys [metadata hiccup html file path]} (md/process-file input)]
                                         ;(println "metadata" metadata hiccup)
           (is (and html file path))
+          (is (clojure.string/includes? output (:name path)) "output filename must include the filename (as the template output the name first")
           (is (= (slurp output) (str "<html><head><title>" (:title metadata) "</title></head><body>" (hiccup/html hiccup) "</body></html>")))))
       (let [home-outputs    (get outputs-n-1 "home")
             tags-outputs    (get outputs-n-1 "tags")

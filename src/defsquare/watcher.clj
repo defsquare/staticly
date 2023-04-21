@@ -2,7 +2,7 @@
   (:require [clojure.core.async :as async]
             [clojure.tools.logging :as log]
             [clojure.java.io :as io]
-            [defsquare.file-utils :as file-utils])
+            [defsquare.files :as files])
   (:import [java.nio.file Paths FileSystems WatchEvent$Kind StandardWatchEventKinds]))
 
 (defonce watcher-dir-state (atom #{}));this atom contains a set that contains the dirs with a watcher started
@@ -36,7 +36,7 @@
 (defn start-watcher! [dir fn-to-execute]
   (let [watcher-for-file? (.isFile (io/file dir))
         watcher-for-dir?  (not watcher-for-file?)
-        [dir file] (if watcher-for-file? [(file-utils/parent dir) dir] [dir nil])
+        [dir file] (if watcher-for-file? [(files/parent dir) dir] [dir nil])
         dir-path (Paths/get (str dir) (into-array String []))
         file-path (when file (Paths/get (str file) (into-array String [])))]
     (if watcher-for-file?

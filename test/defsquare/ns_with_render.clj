@@ -1,6 +1,6 @@
 (ns defsquare.ns-with-render
   (:require  [defsquare.staticly :as staticly]
-             [defsquare.file-utils :refer [tmp-dir]]))
+             [defsquare.files :refer [tmp-dir]]))
 
 (defn render []
   ;(println "render")
