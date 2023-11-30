@@ -7,6 +7,14 @@
 
 (defonce watcher-dir-state (atom #{}));this atom contains a set that contains the dirs with a watcher started
 (defonce watcher-file-state (atom #{}));this atom contains a set that contains the files with a watcher started
+(defonce watch-keys (atom #{}))
+
+(defn reset-watcher! []
+  (doseq [watch-key @watch-keys]
+    (.cancel watch-key))
+  (reset! watch-keys #{})
+  (reset! watcher-dir-state #{})
+  (reset! watcher-file-state #{}))
 
 (defn watcher-for-dir-started? [dir-path]
   (@watcher-dir-state (str dir-path)))
@@ -15,28 +23,29 @@
   (@watcher-file-state (str file-path)))
 
 (defn- start-watch-service [dir-path file-path watcher-for-dir? watcher-for-file? fn-to-execute]
-  (let [watch-svc (.newWatchService (FileSystems/getDefault))]
-        (.register dir-path watch-svc (into-array WatchEvent$Kind [StandardWatchEventKinds/ENTRY_MODIFY StandardWatchEventKinds/ENTRY_CREATE]))
-        (async/go
-          (while true
-            (let [key (.take watch-svc)]
-              (doseq [event (.pollEvents key)]
-                (let [path-changed (.context event)
-                      absolute-path-changed (.toAbsolutePath (Paths/get (str dir-path) (into-array String [(str path-changed)])))]
-                  ;(println "path changed" (str absolute-path-changed) (str file-path) watcher-for-file? watcher-for-dir?)
-                  (when (and watcher-for-file? (.endsWith (str absolute-path-changed) (str file-path)))
-                    (log/infof "File %s in dir %s changed, execute function" file-path (.toString (.context event)) )
-                    (fn-to-execute)))
-                  (when watcher-for-dir?
-                    (log/infof "Dir \"%s\": File %s changed, execute function" dir-path (.toString (.context event)) )
-                    (fn-to-execute))
-                  (.reset key)))))
-        watch-svc))
+  (let [watch-svc (.newWatchService (FileSystems/getDefault))
+        watch-key (.register dir-path watch-svc (into-array WatchEvent$Kind [StandardWatchEventKinds/ENTRY_MODIFY StandardWatchEventKinds/ENTRY_CREATE]))]
+    (swap! watch-keys conj watch-key)
+    (async/go
+      (while true
+        (let [key (.take watch-svc)]
+          (doseq [event (.pollEvents key)]
+            (let [path-changed (.context event)
+                  absolute-path-changed (.toAbsolutePath (Paths/get (str dir-path) (into-array String [(str path-changed)])))]
+                                        ;(println "path changed" (str absolute-path-changed) (str file-path) watcher-for-file? watcher-for-dir?)
+              (when (and watcher-for-file? (.endsWith (str absolute-path-changed) (str file-path)))
+                (log/infof "File %s in dir %s changed, execute function" file-path (.toString (.context event)) )
+                (fn-to-execute)))
+            (when watcher-for-dir?
+              (log/infof "Dir \"%s\": File %s changed, execute function" dir-path (.toString (.context event)) )
+              (fn-to-execute))
+            (.reset key)))))
+    watch-svc))
 
-(defn start-watcher! [dir fn-to-execute]
-  (let [watcher-for-file? (.isFile (io/file dir))
+(defn start-watcher! [file-or-dir fn-to-execute]
+  (let [watcher-for-file? (.isFile (io/file file-or-dir))
         watcher-for-dir?  (not watcher-for-file?)
-        [dir file] (if watcher-for-file? [(files/parent dir) dir] [dir nil])
+        [dir file] (if watcher-for-file? [(files/parent file-or-dir) file-or-dir] [file-or-dir nil])
         dir-path (Paths/get (str dir) (into-array String []))
         file-path (when file (Paths/get (str file) (into-array String [])))]
     (if watcher-for-file?
