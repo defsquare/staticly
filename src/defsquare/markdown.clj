@@ -13,7 +13,7 @@
    [markdown.lists :as lists ]
    [markdown.tables :as tables ]
    [markdown.transformers :as transformers]
-   [nextjournal.markdown :as next.md]
+   ;[nextjournal.markdown :as next.md]
    [nextjournal.markdown.transform :as next.md.transform]
    [defsquare.files :as file-utils])
   (:refer-clojure :exclude [read])
@@ -29,8 +29,8 @@
    (merge next.md.transform/default-hiccup-renderers hiccup-renderers)
    data))
 
-(def parse next.md/parse)
-(def into-markup next.md.transform/into-markup)
+;(def parse next.md/parse)
+;(def into-markup next.md.transform/into-markup)
 
 (defn normalize [s]
   (when s

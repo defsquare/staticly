@@ -1,12 +1,14 @@
 (ns defsquare.files
   (:require [clojure.java.io :as io]
-            [clojure.string :as str])
+            [clojure.string :as str]
+            [babashka.fs :as fs])
   (:import [java.net URI]
-           [java.nio.file Files Path LinkOption]
+           [java.nio.file Files Path LinkOption FileSystems]
            [java.nio.file.attribute  FileAttribute  PosixFilePermissions]
            [java.io File])
   (:refer-clojure :exclude [name parents]))
 
+(set! *warn-on-reflection* true)
 (defmacro ^:private predicate [s path]
   `(if ~path
      (. ~path ~s)
@@ -23,6 +25,9 @@
              in this library."
        :dynamic true}
   *cwd* (.getCanonicalFile (io/file ".")))
+
+(defn current-working-directory []
+  (.getCanonicalFile (io/file ".")))
 
 ;; Library functions will call this function on paths/files so that
 ;; we get the cwd effect on them.
@@ -70,6 +75,11 @@
   "Return true if `path` exists."
   [path]
   (predicate exists (file path)))
+
+(defn assert-exists?
+    "Check if `path` exists and throws an exception if it does not."
+  [path]
+  (assert (exists? path) (format  "The path '%s' doesn't exists, current working directory is '%s'. \nPlease ensure a correct path or filename" path (current-working-directory))))
 
 (defn absolute
   "Return absolute file."
@@ -149,6 +159,7 @@
 
 (defn parent
   "Return the parent path."
+  ^File
   [path]
   (.getParentFile (file path)))
 
@@ -161,11 +172,11 @@
 (defn parse-path
   "Given a file return a map with following keys: dir root base name ext, nil if file doesn't exist.
   Ex.: /tmp/"
-  [f]
+  [^File f]
   (if-let [f (if (string? f) (file f) f)]
     (when (and (exists? f) (not (directory? f)))
       {:dir      (.toString (parent f))
-       :root     (.toString (last (parents f)))
+       :root     (.toString ^File (last (parents f)))
        :base     (base-name f)
        :name     (name f)
        :absolute (.getAbsolutePath f)
@@ -173,11 +184,11 @@
 
 (defn name-starts-with? [s file]
   (let [{:keys [dir root base name ext]} (parse-path file)]
-    (.startsWith base s)))
+    (.startsWith ^String base s)))
 
 (defn name-ends-with? [s file]
   (let [{:keys [dir root base name ext]} (parse-path file)]
-    (.endsWith base s)))
+    (.endsWith ^String base s)))
 
 (defn name-match? [re file]
   (let [{:keys [dir root base name ext]} (parse-path file)]
@@ -185,7 +196,7 @@
 
 (defn ext? [s file]
   (let [{:keys [dir root base name ext]} (parse-path file)]
-    (.endsWith ext s)))
+    (.endsWith ^String ext s)))
 
 (defn markdown? [file]
   (or (ext? "md" file) (ext? "markdown" file)))
@@ -217,16 +228,16 @@
    (let [all-files  (list-files dirs)
         include-filter (if (empty? include-regexes)
                          (fn [_] true)
-                         (fn [f] (some #(re-find % (.getPath f)) include-regexes)))
+                         (fn [^File f] (some #(re-find % (.getPath f)) include-regexes)))
         exclude-filter (if (empty? exclude-regexes)
                          (fn [_] true)
-                         (fn [f] (not (some #(re-find % (.getPath f)) exclude-regexes))))]
+                         (fn [^File f] (not (some #(re-find % (.getPath f)) exclude-regexes))))]
     (filter #(and (include-filter %) (exclude-filter %)) all-files))))
 
 
 (defn as-file [x]
   (if (instance? java.nio.file.Path x)
-    (.toFile x)
+    (.toFile ^Path x)
     (io/as-file x)))
 
 
@@ -262,6 +273,16 @@
                 [])]
     (into-array FileAttribute attrs)))
 
+(defn file-separator
+  "This function returns the platform specific file separator
+   and handles some platform specific issues as they arise.
+   One particular issue is that the value returned by the File
+   API on windows '\\' breaks the re-pattern function."
+  []
+  (let [separator (java.io.File/separator)]
+    ;; Windows, replace with double escape.
+    (str/replace separator "\\" "\\\\")))
+
 (defn create-dirs!
   "Creates directories using `Files#createDirectories`. Also creates parents if needed.
   Doesn't throw an exception if the the dirs exist already. Similar to mkdir -p"
@@ -276,16 +297,15 @@
 
 (defn relative-path [path base]
   (str/replace (canonical-path path)
-               (canonical-path base)
+               (str (canonical-path base) (file-separator))
                ""))
 
-(defn strip-path-seps [path]
-  (if (= (last path)
-         (java.io.File/separatorChar))
+(defn strip-path-seps ^String [^String path]
+  (if (= ^char (last path) ^char (java.io.File/separatorChar))
     (strip-path-seps (apply str (drop-last path)))
     path))
 
-(defn join-paths [path1 path2]
+(defn join-paths ^String [^String path1 ^String path2]
   (str (strip-path-seps path1)
        (when (not (.startsWith path2 "/")) (java.io.File/separatorChar))
        path2))
@@ -301,17 +321,7 @@
 (defn extension [x]
   (cond
     (instance? java.lang.String x) (last (str/split x #"\."))
-    (instance? java.io.File x)     (extension (.getPath x))))
-
-(defn file-separator
-  "This function returns the platform specific file separator
-   and handles some platform specific issues as they arise.
-   One particular issue is that the value returned by the File
-   API on windows '\\' breaks the re-pattern function."
-  []
-  (let [separator (java.io.File/separator)]
-    ;; Windows, replace with double escape.
-    (str/replace separator "\\" "\\\\")))
+    (instance? java.io.File x)     (extension (.getPath ^File x))))
 
 (defn ensure-out-dir
   ([out-path]
@@ -331,28 +341,28 @@
 (defn ns-to-source-file
   "Converts the namespace object to a source (.clj) file path."
   [ns]
-  (when-let [name (try (-> ns ns-name str) (catch Exception e))]
+  (when-let [^String name (try (-> ns ns-name str) (catch Exception e))]
     (let [tokens (.split name "\\.")]
       (str (apply str (interpose File/separator (map munge tokens))) ".clj"))))
 
 (defn find-uncle-file
   "Finds an ancestor directory of file f containing a file uncle."
-  [f uncle]
-  (let [f (if (string? f) (File. f) f)
-        uncle (if (string? uncle) uncle (.getPath uncle))
+  [^File f ^String uncle]
+  (let [f (if (string? f) (File. ^String f) f)
+        uncle (if (string? uncle) uncle (.getPath ^File uncle))
         d0 (if (.isDirectory f) f (.getParentFile f))]
-    (loop [dir d0]
+    (loop [^File dir d0]
       (when dir
-        (if (.exists (File. dir uncle))
+        (if (.exists ^File (File. ^File dir ^String uncle))
           (.getAbsolutePath dir)
           (recur (.getParentFile dir)))))))
 
 (defn find-resource
-  [file]
-  (loop [cl (.. Thread currentThread getContextClassLoader)]
+  ^java.net.URL [^String filename]
+  (loop [^java.net.URLClassLoader cl (.. Thread currentThread getContextClassLoader)]
     (when cl
       ;(println "cl" cl)
-      (if-let [url (.findResource cl file)]
+      (if-let [url (.findResource cl filename)]
         url
         (recur (.getParent cl))))))
 
@@ -360,9 +370,9 @@
   "Returns the absolute file path of the parent of the src directory
    enclosing the current source file (or namespace's) package dirs.
    If running from a jar, returns the enclosing directory."
-  ([file]
-    (when-let [url (find-resource file)]
-      (let [stub (.replace (.getFile url) file "")]
+  ([^File file]
+    (when-let [^java.net.URL url (find-resource file)]
+      (let [^String stub (.replace ^String (.getFile url) (str file) "")]
         (->
           (if (.endsWith stub ".jar!/")
             (.substring stub 5 (- (.length stub) 2))
@@ -374,12 +384,39 @@
         (find-uncle-file (File. ".") "project.clj")
         (find-uncle-file (File. ".") "deps.edn"))))
 
-(defn tmp-dir [name]
+(defn tmp-dir [^String name]
   (Files/createTempDirectory
    (.toPath (io/as-file (System/getProperty "java.io.tmpdir")))
    name
    (into-array java.nio.file.attribute.FileAttribute [])))
 
-(defn file-empty? [f]
+(defn file-empty? [^File f]
   (= 0 (count (slurp f))))
 
+(defn change-extension
+  "Return a path with the same path and name but with an new extension"
+  [file new-ext]
+  (let [{:keys [dir name]}  (parse-path file)]
+    (io/file dir (str name "." new-ext))))
+
+(defn touch [file]
+  (fs/create-file file))
+
+(defn glob-file-seq
+  ([^String glob]
+   (glob-file-seq glob (current-working-directory)))
+  ([^String glob ^File dir]
+   (let [matcher (.getPathMatcher (FileSystems/getDefault) glob)]
+     (->> dir
+          io/file
+          file-seq
+          (filter (fn [^File f] (.isFile f)))
+          (filter (fn [^File f] (.matches matcher (.toPath f))))))))
+
+(defn relativize [path1 path2]
+  (let [path1 (if (instance? java.nio.file.Path path1) path1 (.toPath (io/file path1)))
+        path2 (if (instance? java.nio.file.Path path2) path2 (.toPath (io/file path2)))]
+    (.relativize ^Path path1 ^Path path2)))
+
+(defn path [& paths]
+  (java.nio.file.Paths/get (first paths) (into-array String (rest paths))))

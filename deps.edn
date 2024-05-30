@@ -1,10 +1,11 @@
-{:paths ["src" "resources"]
- :deps  {org.clojure/clojure       {:mvn/version "1.11.1"}
+{:paths ["src" "resources" "classes"]
+ :deps  {org.clojure/clojure       {:mvn/version "1.11.3"}
          org.clojure/tools.logging {:mvn/version "1.2.4"}
          org.clojure/core.async    {:mvn/version "1.6.673"}
 
-         org.apache.logging.log4j/log4j-api  {:mvn/version "2.20.0"}
-         org.apache.logging.log4j/log4j-core {:mvn/version "2.20.0"}
+         babashka/fs {:mvn/version "0.5.20"}
+
+         com.github.clj-easy/graal-build-time {:mvn/version "1.0.5"}
 
          markdown-clj/markdown-clj             {:mvn/version "1.10.7"}
          ;;YAML found in markdown front matter
@@ -14,7 +15,7 @@
          markdown-to-hiccup/markdown-to-hiccup {:mvn/version "0.6.2"}
 
          ;;Plantuml for generating diagram
-         net.sourceforge.plantuml/plantuml-mit {:mvn/version "1.2023.12"}
+         net.sourceforge.plantuml/plantuml-mit {:mvn/version "1.2024.4"}
 
          ;;our fork to be able to inline HTML
          io.github.nextjournal/markdown {:git/url "https://github.com/defsquare/markdown"
@@ -34,5 +35,14 @@
          functionalbytes/mount-lite {:mvn/version "2.3.0"}
 
          clj-rss/clj-rss {:mvn/version "0.4.0"}
+         }
+ :aliases
+         {:plantuml {:deps {org.clojure/clojure       {:mvn/version "1.11.3"}
+                            org.clojure/tools.logging {:mvn/version "1.2.4"}
+                            org.clojure/core.async    {:mvn/version "1.6.673"}
+                            babashka/fs {:mvn/version "0.5.20"}
+                            com.github.clj-easy/graal-build-time {:mvn/version "1.0.5"}
+                            net.sourceforge.plantuml/plantuml-mit {:mvn/version "1.2024.4"}
+                             }}
          }
  }

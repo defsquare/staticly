@@ -269,6 +269,9 @@ To get the Hiccup corresponding to the HTML code you just have to execute the fo
   )
 
 ```
+# Native binary
+
+Run the script `build-plantuml-watcher.sh` to build the `plantuml-watcher` native executable, be sure to [use the Liberica NIK GraalVM version that include the proper AWT native lib](https://github.com/oracle/graal/issues/4124) for plantuml PNG rendering feature (use sdkman to easily switch between Oracle's GraalVM and Liberica Nik version). 
 
 # Metadata and front-matter
 

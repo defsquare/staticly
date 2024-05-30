@@ -6,9 +6,7 @@
             [environ.core :as environ]
             [hiccup.core :as hiccup]
             [lambdaisland.uri.normalize :as normalize]
-
 ;            [mount.lite :refer [defstate]]
-
             [defsquare.markdown :as md]
             [defsquare.files :as file-utils :refer [exists? canonical-path relative-path as-path directory? file? strip-path-seps join-paths drop-extension html-extension extension file-separator ensure-out-dir]]
             [defsquare.rss :refer [write-rss!]]
@@ -17,6 +15,9 @@
             [defsquare.server :as server]
             )
   (:import [java.io File]))
+
+(set! *warn-on-reflection* true)
+
 
 (def rendered-filetypes #{"md" "mds" "clj" "cljc" "cljs" "yaml" "json" "edn"})
 
@@ -86,8 +87,8 @@
   [from to dest-path-fn path]
   (let [out-path-fn (or dest-path-fn drop-extension)
         single-file? (= path from)
-        to-dir? (or (.isDirectory (file-utils/as-file to))
-                    (= (last (.getPath (file-utils/as-file path))) (java.io.File/separatorChar)))
+        to-dir? (or (.isDirectory ^File (file-utils/as-file to))
+                    (= ^char (last (.getPath ^File (file-utils/as-file path))) ^char (java.io.File/separatorChar)))
         relative-from-path (if single-file? path (relative-path path from))]
     (if (and single-file? (not to-dir?))
       ;; then we're just translating a single file with an explicit `to` path
@@ -98,19 +99,18 @@
 (defn dest-url [{:as params :keys [from baseurl dest-path-fn]} path]
   (str baseurl "/" (dest-path-fn (if (= path from) path (relative-path path from)))))
 
-
-(defn determine-template [{:keys [single-templates] :as params} file]
+(defn determine-template [{:keys [single-templates] :as params} ^File file]
   (some (fn [[re-string template]] (when (re-find (re-pattern re-string) (.getPath file))
                              template)) single-templates))
 
-(defmulti build-file! (fn [_ file]
+(defmulti build-file! (fn [_ ^File file]
                         (let [ext (file-utils/extension (.getPath file))]
                           (log/infof "build-file! %s with extension %s" (str file) ext)
                           (cond
                             (copied-filetypes ext)   :copy
                             (rendered-filetypes ext) :render))))
 
-(defn write-html [{:keys [from to dest-path-fn]} src-file html]
+(defn write-html [{:keys [from to dest-path-fn]} ^File src-file html]
   (let [dest-file (dest-path from to dest-path-fn src-file)
         dest-dir  (dest-path from to drop-extension src-file)
         dest-index-html-file (str dest-dir "/index.html")]
@@ -137,7 +137,7 @@
     (write-html params file templated-html)
     (assoc markdown :templated-html templated-html :type :markdown :file file)))
 
-(defn copy-asset! [{:keys [from to]} file]
+(defn copy-asset! [{:keys [from to]} ^File file]
   (let [dest-path (dest-path from to identity (.getPath file) )]
     (ensure-out-dir dest-path true)
     (log/infof "Copy file %s to %s" file dest-path)
@@ -147,9 +147,9 @@
 (defn copy-assets! [{:keys [from to dest-path-fn]}]
   (log/infof "Copy assets from %s to %s" from to)
   (reduce (fn [acc dir]
-            (let [files (doall (file-utils/list-files dir (fn [file] (copied-filetypes (file-utils/extension (.getPath file))) )))]
+            (let [files (doall (file-utils/list-files dir (fn [^File file] (copied-filetypes (file-utils/extension (.getPath file))) )))]
               (log/infof "Copy asset files: %s" files)
-              (reduce (fn [acc file]
+              (reduce (fn [acc ^File file]
                         (let [dest-path (dest-path dir to identity (.getPath file))]
                           (ensure-out-dir dest-path true)
                           (log/debugf "Copy asset file %s to %s" file dest-path)
@@ -272,7 +272,9 @@
      (~(symbol (str *ns*) BUILD_FN_NAME))))
 
 (defmacro current-file []
-  `(-> (or (clojure.java.io/resource *file*) (clojure.java.io/file *file*))
+  `(-> (or ~(vary-meta `(clojure.java.io/resource *file*) assoc :tag `File)
+           ~(vary-meta `(clojure.java.io/file *file*) assoc :tag `File))
+       ^File
        .toURI
        (java.nio.file.Paths/get)
        .toString))
