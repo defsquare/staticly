@@ -7,7 +7,7 @@ An opinionated Static-Site Generator associating [Clojure](https://clojure.org),
 * Use **configuration by convention** whenever it's possible
 * Use Clojure's **Hiccup format** and pure clojure function for composition and templating
 * Use Markdown and provides utility to **process markdown effectively** (a la Markdoc)
-* **Good developer experience** (at least on MacOS for the moment): Reload the browser's tab(s) displaying the rendered HTML file(s) whenever a change is made to either clojure code or markdown files (so no dev Server logic in order to keep the code simple) using AppleScript interacting with Safari.
+* **Good developer experience** (at least on MacOS for the moment): Reload the browser's tab(s) displaying the rendered HTML file(s) whenever a change is made to either clojure code or markdown files (~~so no dev Server logic in order to keep the code simple~~ changed my mind on this...see [server.clj ns](https://github.com/defsquare/staticly/blob/main/src/defsquare/server.clj)) using AppleScript interacting with Safari.
 * **Tailwind CSS friendly**, as it's a very efficient way of doing styling.
 * **Target static page hosting** with a CI/CD mechanism like [Cloudflare Pages](https://pages.cloudflare.com) that will build and host your HTML files (example in section [Cloudflare Hosting](#cloudflare-hosting))
 
