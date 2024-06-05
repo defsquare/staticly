@@ -40,7 +40,7 @@ An opinionated Static-Site Generator associating [Clojure](https://clojure.org),
 # Rationale
 
 I wanted a versatile blog engine in Clojure that allows me build website and blog in an easy and simple way with the following features:
-* Hiccup component based as I found it's a very easy way to build reusable components, utility to convert [Tailwind CSS](https://tailwindcss.com) and [UI](https://tailwindui.com/components) components into hiccup
+* Hiccup component based as I found it's a very easy way to build reusable components, [utility](https://github.com/defsquare/staticly/blob/main/src/defsquare/hiccup.clj) to convert [Tailwind CSS](https://tailwindcss.com) and [UI](https://tailwindui.com/components) components into hiccup
 * Markdown processing with a way to override how each element are rendered (thanks to [nextjournal/markdown](https://github.com/nextjournal/markdown))
 
 # Usage
