@@ -13,8 +13,8 @@
    [markdown.lists :as lists ]
    [markdown.tables :as tables ]
    [markdown.transformers :as transformers]
-;   [nextjournal.markdown :as next.md]
-   ;[nextjournal.markdown.transform :as next.md.transform]
+   [nextjournal.markdown :as next.md]
+   [nextjournal.markdown.transform :as next.md.transform]
    [defsquare.files :as file-utils])
   (:refer-clojure :exclude [read])
   (:import
@@ -24,13 +24,13 @@
 (defn- add-hiccup [{:keys [html] :as markdown}]
   (assoc markdown :hiccup (doall (map hickory/as-hiccup (hickory/parse-fragment html)))))
 
-#_(defn ->hiccup [hiccup-renderers data]
+(defn ->hiccup [hiccup-renderers data]
   (next.md.transform/->hiccup
    (merge next.md.transform/default-hiccup-renderers hiccup-renderers)
    data))
 
-;(def parse next.md/parse)
-;(def into-markup next.md.transform/into-markup)
+(def parse next.md/parse)
+(def into-markup next.md.transform/into-markup)
 
 (defn normalize [s]
   (when s
