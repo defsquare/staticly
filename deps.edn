@@ -20,9 +20,9 @@
 
          ;;our fork to be able to inline HTML
          io.github.nextjournal/markdown {:git/url "https://github.com/defsquare/markdown.git"
-                                         :sha "560d5f35e54ff9b1b517fdc3f236d7ac75a58a82"}
+                                         :git/sha "560d5f35e54ff9b1b517fdc3f236d7ac75a58a82"}
 
-         instaparse/instaparse {:mvn/version "1.4.12"}
+         instaparse/instaparse {:mvn/version "1.5.0"}
 
          lambdaisland/uri                    {:mvn/version "1.15.125"}
          org.clj-commons/hickory             {:mvn/version "0.7.4"}

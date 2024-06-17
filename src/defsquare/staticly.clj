@@ -272,7 +272,7 @@
      (~(symbol (str *ns*) BUILD_FN_NAME))))
 
 (defmacro current-file []
-  `(-> (or ~(vary-meta `(clojure.java.io/resource *file*) assoc :tag `File)
+  `(-> (or ~(vary-meta `(clojure.java.io/resource *file*) assoc :tag `java.net.URL)
            ~(vary-meta `(clojure.java.io/file *file*) assoc :tag `File))
        ^File
        .toURI
@@ -346,7 +346,7 @@
 (defmacro def-render-builder
   ([] `(def-render-builder {:from [~PUBLIC_DIR] :to ~WRITE_DIR :render-fn "render"}))
   ([{:keys [to render-fn] :or {to WRITE_DIR render-fn "render"} :as params}]
-   (log/infof "Def Staticly builder: rendering function \"%s\" writing HTML to %s" render-fn to)
+   (println (format  "Def Staticly builder: rendering function \"%s\" writing HTML to %s" render-fn to))
    `(do
       (require 'environ.core)
       (emit-build! ~(assoc params :to to :render-fn render-fn))
