@@ -19,8 +19,8 @@
          net.sourceforge.plantuml/plantuml-mit {:mvn/version "1.2024.4"}
 
          ;;our fork to be able to inline HTML
-         io.github.nextjournal/markdown {:git/url "https://github.com/defsquare/markdown"
-                                         :sha     "560d5f35e54ff9b1b517fdc3f236d7ac75a58a82"}
+         io.github.nextjournal/markdown {:git/url "https://github.com/defsquare/markdown.git"
+                                         :git/sha "560d5f35e54ff9b1b517fdc3f236d7ac75a58a82"}
 
          instaparse/instaparse {:mvn/version "1.4.12"}
 
