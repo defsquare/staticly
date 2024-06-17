@@ -45,6 +45,12 @@ I wanted a versatile blog engine in Clojure that allows me build website and blo
 
 # Usage
 
+There are three manners of render something with staticly:
+1. pure Clojure, just output some Hiccup from a `render` function
+2. Single page rendering from a Markdown file with a template 
+3. Multiple page rendering from a Markdown file with several templates (the page for the markdown, pages aggregation for several markdown (all or specific to a tag)).
+These three rendering ways are described in the next sections.
+
 ## Rendering with everything in a Clojure `render` function
 
 You write a `render` function in your ns, with no argument, that just output a Hiccup data structure, you're free to use any data structure and way of structuring (or not) the content. Then you add the `def-render-builder` macro invocation at the end of the namespace that will:
@@ -157,7 +163,7 @@ We rely on the great [nextjournal/markdown library](https://github.com/nextjourn
 
 ## Blog rendering with Markdown files
 
-Two "template" functions to implement :
+Three "template" functions to implement :
 
 * `post-template`: template that outputs HTML for a single markdown file
 * `home-template`: template that outputs HTML given all the markdowns

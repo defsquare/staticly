@@ -8,7 +8,6 @@ native-image \
     -H:+ReportExceptionStackTraces \
     -H:+AllowDeprecatedBuilderClassesOnImageClasspath \
     -H:IncludeResources=".*/plantuml.skin$" \
-    -H:+BuildReport \
     -O3 \
     --features=clj_easy.graal_build_time.InitClojureClasses \
     --verbose \
