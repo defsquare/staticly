@@ -1,15 +1,16 @@
 #!/bin/bash
 
-clj -Mplantuml -e "(compile 'defsquare.plantuml)"
+clj -e "(compile 'defsquare.staticly)"
+
+sdk use java 21.0.3-graal
 
 native-image \
-    -cp "$(clojure -Spath -Aplantuml):classes" \
-    -H:Name=plantuml-watcher \
+    -cp "$(clojure -Spath):classes" \
+    -H:Name=staticly \
     -H:+ReportExceptionStackTraces \
     -H:+AllowDeprecatedBuilderClassesOnImageClasspath \
-    -H:IncludeResources=".*/plantuml.skin$" \
     -O3 \
     --features=clj_easy.graal_build_time.InitClojureClasses \
     --verbose \
     --no-fallback \
-    defsquare.plantuml
+    defsquare.staticly

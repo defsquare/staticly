@@ -19,13 +19,13 @@
          net.sourceforge.plantuml/plantuml-mit {:mvn/version "1.2024.4"}
 
          ;;our fork to be able to inline HTML
-         io.github.nextjournal/markdown {:git/url "https://github.com/defsquare/markdown"
-                                         :sha     "56e267175c621a9f9c35a633c8d786ccf4fa61e3"}
+         ;io.github.nextjournal/markdown {:git/url "https://github.com/defsquare/markdown"
+                                         ;:sha     "56e267175c621a9f9c35a633c8d786ccf4fa61e3"}
 
          instaparse/instaparse {:mvn/version "1.4.12"}
 
          lambdaisland/uri                    {:mvn/version "1.15.125"}
-         org.clj-commons/hickory             {:mvn/version "0.7.3"}
+         org.clj-commons/hickory             {:mvn/version "0.7.4"}
          camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.2"}
 
          http-kit/http-kit {:mvn/version "2.6.0"}
@@ -36,14 +36,5 @@
          functionalbytes/mount-lite {:mvn/version "2.3.0"}
 
          clj-rss/clj-rss {:mvn/version "0.4.0"}
-         }
- :aliases
-         {:plantuml {:deps {org.clojure/clojure       {:mvn/version "1.11.3"}
-                            org.clojure/tools.logging {:mvn/version "1.2.4"}
-                            org.clojure/core.async    {:mvn/version "1.6.673"}
-                            babashka/fs {:mvn/version "0.5.20"}
-                            com.github.clj-easy/graal-build-time {:mvn/version "1.0.5"}
-                            net.sourceforge.plantuml/plantuml-mit {:mvn/version "1.2024.4"}
-                             }}
          }
  }

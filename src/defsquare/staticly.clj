@@ -14,10 +14,10 @@
             [defsquare.safari :as safari :refer [reload-tab!]]
             [defsquare.server :as server]
             )
-  (:import [java.io File]))
+  (:import [java.io File])
+  (:gen-class))
 
 (set! *warn-on-reflection* true)
-
 
 (def rendered-filetypes #{"md" "mds" "clj" "cljc" "cljs" "yaml" "json" "edn"})
 
@@ -636,6 +636,13 @@
       ;;watch the file where this macro is invoked
       (watcher/start-watcher! ~(current-file) rebuild-and-reload!)
       (rebuild-and-reload!))))
+
+(defn -main [& args]
+  (println "Build")
+  (future
+    (doseq [build!-fn @build-fns]
+      (build!-fn))))
+
 
 (comment
   (let [files       (file-utils/list-files "blog")
