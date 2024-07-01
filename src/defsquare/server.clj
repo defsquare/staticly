@@ -5,6 +5,7 @@
             [org.httpkit.server :as server]
             [ring.middleware.content-type :as content-type]
             [ring.util.mime-type :as mime-type]
+            [mount.lite :refer [defstate] :as mount]
             [hiccup2.core :as hiccup]
             [defsquare.files :as f])
   (:import [java.net URLDecoder URLEncoder Socket InetSocketAddress]))
@@ -32,6 +33,8 @@
         {:keys [ext]} (f/parse-path file)]
     {:body file :headers {"Content-Type" (get mime-type/default-mime-types ext)}}))
 
+;(defstate server :start (start-server!))
+
 (defn start-server!
   ([] (start-server! "." 8080))
   ([dir] (start-server! dir 8080))
@@ -40,7 +43,8 @@
    (let [dir     (.toAbsolutePath (f/as-path dir))
          stop-fn (server/run-server
                   (content-type/wrap-content-type (fn [{:keys [uri]}]
-                                                    (let [f          (f/path dir (str/replace-first (URLDecoder/decode uri) #"^/" ""))
+                                                    (println "Serve URI" uri "from dir" dir)
+                                                    (let [f          (f/path (str dir) (str/replace-first (URLDecoder/decode uri) #"^/" ""))
                                                           index-file (f/path f "index.html")]
                                                       (cond
                                                         (and (f/directory? f) (f/readable? index-file)) (body index-file)

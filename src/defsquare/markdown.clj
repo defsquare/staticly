@@ -17,8 +17,12 @@
    [nextjournal.markdown.transform :as next.md.transform]
    [defsquare.files :as file-utils])
   (:refer-clojure :exclude [read])
-  (:import
-   [java.text Normalizer]))
+  (:import [java.io BufferedReader
+                    BufferedWriter
+                    StringReader
+                    StringWriter
+                    Writer]
+           [java.text Normalizer]))
 
 
 (defn- add-hiccup [{:keys [html] :as markdown}]
@@ -28,6 +32,12 @@
   (next.md.transform/->hiccup
    (merge next.md.transform/default-hiccup-renderers hiccup-renderers)
    data))
+
+(defn md->html [^String md]
+  (let [in  (new StringReader md)
+        out (new StringWriter)]
+    (md/md-to-html in out)
+    (.toString out)))
 
 (def parse next.md/parse)
 (def into-markup next.md.transform/into-markup)

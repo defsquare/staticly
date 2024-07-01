@@ -1,7 +1,12 @@
 (ns defsquare.hiccup
   (:require [clojure.java.io :as io]
             [clojure.walk :as walk :refer [postwalk]]
-            [hickory.core :as hickory :refer [as-hiccup parse-fragment]]))
+            [clojure.pprint :refer [pprint]]
+            [clojure.string :as str]
+            [hickory.core :as hickory :refer [as-hiccup parse-fragment]]
+            [defsquare.clipboard :as clipboard]
+            [defsquare.markdown :as md]
+            ))
 
 (defn paste []
   (-> (java.awt.Toolkit/getDefaultToolkit)
@@ -37,11 +42,19 @@
 (defn clean-hiccup [hiccup]
   (walk/postwalk remove-empty-form hiccup))
 
+
 (defn html-str->hiccup [html-str]
   (->> html-str
        hickory/parse-fragment
        (map hickory/as-hiccup)
        clean-hiccup))
+
+(defn md->hiccup [md]
+  (html-str->hiccup (md/md->html md)))
+
+(defn md-fragment->hiccup [md]
+  (when md
+    (vec (concat [:div] (md->hiccup md)))))
 
 (defn html-file->hiccup [f]
   (html-str->hiccup (slurp f)))
@@ -52,3 +65,10 @@
             (slurp f)
             html)]
     (html-str->hiccup s)))
+
+(defn clipboard->hiccup []
+  (binding [clojure.pprint/*print-right-margin* 160]
+    (clipboard/copy (with-out-str
+                      (-> (clipboard/paste)
+                          html->hiccup
+                          pprint)))))

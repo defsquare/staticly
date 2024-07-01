@@ -6,7 +6,7 @@
             [environ.core :as environ]
             [hiccup.core :as hiccup]
             [lambdaisland.uri.normalize :as normalize]
-;            [mount.lite :refer [defstate]]
+            [mount.lite :as mount]
             [defsquare.markdown :as md]
             [defsquare.files :as file-utils :refer [exists? canonical-path relative-path as-path directory? file? strip-path-seps join-paths drop-extension html-extension extension file-separator ensure-out-dir]]
             [defsquare.rss :refer [write-rss!]]
@@ -339,9 +339,11 @@
        (staticly/register-build-function! (var ~(symbol BUILD_FN_NAME)))))
 
 (defmacro start-server [to]
-  `(let [port# ~(server/next-available-port 8080)]
-     (def ~(symbol "server") {:port port# :stop-fn! (server/start-server! ~to port#)})
-     (safari/open-or-reload! (str "http://localhost:" port#))))
+  `(do
+     (let [port# ~(server/next-available-port 8080)]
+       (mount/start)
+       (def ~(symbol "server") {:port port# :stop-fn! (server/start-server! ~to port#)})
+       (safari/open-or-reload! (str "http://localhost:" port#)))))
 
 (defmacro def-render-builder
   ([] `(def-render-builder {:from [~PUBLIC_DIR] :to ~WRITE_DIR :render-fn "render"}))
@@ -356,6 +358,7 @@
                                         ;watch the clj file
       (when (developer-environment?)
         (watcher/start-watcher! ~(current-file) ~(symbol (str *ns*) BUILD_FN_NAME))
+        ()
         (start-server ~to))
       ~(symbol "outputs"))))
 

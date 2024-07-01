@@ -419,4 +419,4 @@
     (.relativize ^Path path1 ^Path path2)))
 
 (defn path [& paths]
-  (java.nio.file.Paths/get (first paths) (into-array String (rest paths))))
+  (java.nio.file.Paths/get (str (first paths)) (into-array String (rest paths))))
