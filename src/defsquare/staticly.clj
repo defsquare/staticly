@@ -23,7 +23,6 @@
 
 (def copied-filetypes #{"jpg" "jpeg"  "png" "svg" "css" "html" "js" "ttf" "woff" "woff2" "eot" "ico" "pdf"})
 
-;(defstate http-server :start (server/start-server! ))
 
 (defn lower
   "Converts string to all lower-case.
@@ -338,16 +337,17 @@
            files#))
        (staticly/register-build-function! (var ~(symbol BUILD_FN_NAME)))))
 
-(defmacro start-server [to]
+(defmacro start-server [to path]
   `(do
-     (let [port# ~(server/next-available-port 8080)]
-       (mount/start)
-       (def ~(symbol "server") {:port port# :stop-fn! (server/start-server! ~to port#)})
-       (safari/open-or-reload! (str "http://localhost:" port#)))))
+     (def ~(symbol "server") (server/start-server! ~to))
+     (safari/open-or-reload! (str "http://localhost:" (:port ~(symbol "server")) ~path))))
+
+(defn current-ns-last-part []
+  (subs (str *ns*) (inc (.lastIndexOf (str *ns*) "."))))
 
 (defmacro def-render-builder
   ([] `(def-render-builder {:from [~PUBLIC_DIR] :to ~WRITE_DIR :render-fn "render"}))
-  ([{:keys [to render-fn] :or {to WRITE_DIR render-fn "render"} :as params}]
+  ([{:keys [to render-fn path] :or {to WRITE_DIR render-fn "render"} :as params}]
    (println (format  "Def Staticly builder: rendering function \"%s\" writing HTML to %s" render-fn to))
    `(do
       (require 'environ.core)
@@ -355,11 +355,10 @@
       (emit-main  ~(assoc params :to to :render-fn render-fn))
       (def ~(symbol "write-dir") ~to)
       (def ~(symbol "outputs") (~(symbol (str *ns*) BUILD_FN_NAME)))
-                                        ;watch the clj file
+
       (when (developer-environment?)
         (watcher/start-watcher! ~(current-file) ~(symbol (str *ns*) BUILD_FN_NAME))
-        ()
-        (start-server ~to))
+        (start-server ~to (str "/" (current-ns-last-part))))
       ~(symbol "outputs"))))
 
 (defmacro emit-md-build [params]

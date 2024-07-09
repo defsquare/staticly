@@ -10,6 +10,7 @@
             [defsquare.files :as f])
   (:import [java.net URLDecoder URLEncoder Socket InetSocketAddress]))
 
+
 (defn index [dir f]
   (let [files (map (fn [file]
                      (str (.relativize dir (f/as-path file))))
@@ -35,26 +36,6 @@
 
 ;(defstate server :start (start-server!))
 
-(defn start-server!
-  ([] (start-server! "." 8080))
-  ([dir] (start-server! dir 8080))
-  ([dir port]
-   (log/infof "Start HTTP Server serving directory \"%s\" at port %s" (str dir) port)
-   (let [dir     (.toAbsolutePath (f/as-path dir))
-         stop-fn (server/run-server
-                  (content-type/wrap-content-type (fn [{:keys [uri]}]
-                                                    (println "Serve URI" uri "from dir" dir)
-                                                    (let [f          (f/path (str dir) (str/replace-first (URLDecoder/decode uri) #"^/" ""))
-                                                          index-file (f/path f "index.html")]
-                                                      (cond
-                                                        (and (f/directory? f) (f/readable? index-file)) (body index-file)
-                                                        (f/directory? f) (index dir f)
-                                                        (f/readable? f) (body f)
-                                                        :else {:status 404 :body (str "404 Not found: file `" f "` in " dir) :headers {"Content-Type" "text/plain"}}))))
-                  {:port port})]
-     (log/infof "HTTP Server started serving directory \"%s\"at port %s" (str dir) port)
-     stop-fn)))
-
 (defn server-listening?
   "Check if a given host is listening on a given port in the limit of timeout-ms (default 500 ms)"
   ([] (server-listening? 8080))
@@ -74,3 +55,32 @@
   [start-port]
   (loop [port start-port]
     (if (server-listening? port) (recur (inc port)) port)))
+
+;servers are map of dir to the server serving it
+(def servers (atom {}))
+
+(defn start-server!
+  ([] (start-server! "." (next-available-port 8080)))
+  ([dir]
+   (start-server! dir (next-available-port 8080)))
+  ([dir port]
+   (log/infof "Start HTTP Server serving directory \"%s\" at port %s" (str dir) port)
+   (let [dir  (.toAbsolutePath (f/as-path dir))]
+     (println "start-server!" dir port @servers)
+     (if (not (get @servers dir))
+       (swap! servers assoc dir
+              {:stop-fn! (server/run-server
+                          (content-type/wrap-content-type (fn [{:keys [uri]}]
+                                                            (println "Serve URI" uri "from dir" dir)
+                                                            (let [f          (f/path (str dir) (str/replace-first (URLDecoder/decode uri) #"^/" ""))
+                                                                  index-file (f/path f "index.html")]
+                                                              (cond
+                                                                (and (f/directory? f) (f/readable? index-file)) (body index-file)
+                                                                (f/directory? f)                                (index dir f)
+                                                                (f/readable? f)                                 (body f)
+                                                                :else                                           {:status 404 :body (str "404 Not found: file `" f "` in " dir) :headers {"Content-Type" "text/plain"}}))))
+                          {:port port})
+               :port port})
+       )
+     (log/infof "HTTP Server started serving directory \"%s\"at port %s" (str dir) (get-in @servers [dir :port]))
+     {:port (get-in @servers [ dir :port]) :dir dir :stop-fn! (get @servers dir)})))
